@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+echo "#!/usr/bin/env bash" > jamesprl
+echo "exec sml @SMLload=\"$PWD/.heapimg\" \"\$@\"" >> jamesprl
+
+chmod +x jamesprl
