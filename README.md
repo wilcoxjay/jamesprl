@@ -13,3 +13,5 @@ intro with U{1}; [eq, intro with U{0} as x; [hypeq A, hyp x]]
 Proved!
 done!
 ```
+
+There is also a (silent) [video demo](https://www.youtube.com/watch?v=NSoXNqOeFLA).
