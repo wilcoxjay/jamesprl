@@ -302,7 +302,7 @@ structure TacticAst = struct
   | ThenL of t * t list
   | OrElse of t * t
   | Hyp of string
-  | HypEq of string
+  | HypEq
 
   fun withToString NONE = ""
     | withToString (SOME e) = " with " ^ ExprAst.toString e
@@ -323,7 +323,7 @@ structure TacticAst = struct
       in toString t ^ "; [" ^ go l ^ "]" end
     | toString (OrElse (t1, t2)) = toString t1 ^ " | " ^ toString t2
     | toString (Hyp x) = "hyp " ^ x
-    | toString (HypEq x) = "hypeq " ^ x
+    | toString HypEq = "hypeq"
 end
 
 structure CommandAst = struct
@@ -626,9 +626,7 @@ structure Parser :> PARSER = struct
     | parse_tactic2 ((_, Id "hyp") :: ts) =
       let val (x, ts) = expect_id "hypothesis name" ts
       in (TacticAst.Hyp x, ts) end
-    | parse_tactic2 ((_, Id "hypeq") :: ts) =
-      let val (x, ts) = expect_id "hypothesis name" ts
-      in (TacticAst.HypEq x, ts) end
+    | parse_tactic2 ((_, Id "hypeq") :: ts) = (TacticAst.HypEq, ts)
     | parse_tactic2 ((_, LParen) :: ts) =
       let val (tac, ts) = parse_tactic ts
           val ((), ts) = expect_tok "parenthesized tactic" RParen ts
@@ -793,29 +791,20 @@ structure Rules = struct
          else { subgoals = [], evidence = fn _ => Derivation.Hyp x }
       end
 
-    fun HypEq x (H >> C) =
-      let val (x, ty) = getHyp x H
-      in case Expr.outof C of
-             Expr.Eq (lhs, rhs, ty') =>
-             (case (Expr.outof lhs, Expr.outof rhs) of
-                  (Expr.Var l, Expr.Var r) =>
-                  if not (Var.eq l x)
-                  then raise ExternalError ("LHS of goal is " ^ Var.toString l ^
-                                        " rather than " ^ Var.toString x)
-                  else if not (Var.eq r x)
-                  then raise ExternalError ("RHS of goal is " ^ Var.toString r ^
-                                        " rather than " ^ Var.toString x)
-                  else if not (Expr.alphaEq ty ty')
-                  then raise ExternalError (Var.toString x ^ " has type " ^
-                                        Expr.toString ty ^ " rather than " ^
-                                        Expr.toString ty')
-                  else {subgoals = [], evidence = fn _ => Derivation.HypEq x}
-               | _ => raise ExternalError ("HypEq expects an equality goal between vars " ^
-                                       "but got " ^ Expr.toString lhs ^ " and " ^
-                                       Expr.toString rhs))
-          | _ => raise ExternalError ("HypEq expects equality goal rather than " ^
-                                  Expr.toString C)
-      end
+    fun HypEq (H >> C) =
+      case Expr.outof C of
+          Expr.Eq (lhs, rhs, ty') =>
+          (case (Expr.outof lhs, Expr.outof rhs) of
+               (Expr.Var l, Expr.Var r) =>
+               if not (Var.eq l r)
+               then raise ExternalError ("Goal consists of different variables " ^
+                                         Var.toString l ^ " and " ^ Var.toString r ^ ".")
+               else {subgoals = [], evidence = fn _ => Derivation.HypEq l}
+             | _ => raise ExternalError ("HypEq expects an equality goal between vars " ^
+                                         "but got " ^ Expr.toString lhs ^ " and " ^
+                                         Expr.toString rhs))
+        | _ => raise ExternalError ("HypEq expects equality goal rather than " ^
+                                    Expr.toString C)
   end
 
   structure Pi = struct
@@ -883,7 +872,7 @@ structure TacticInterpreter = struct
     | interpret (ThenL (t, l)) = THENL (interpret t, List.map interpret l)
     | interpret (OrElse (t1, t2)) = ORELSE (interpret t1, interpret t2)
     | interpret (Hyp x) = Rules.General.Hyp x
-    | interpret (HypEq x) = Rules.General.HypEq x
+    | interpret HypEq = Rules.General.HypEq
 end
 
 structure Refiner = struct
