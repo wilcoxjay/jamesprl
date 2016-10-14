@@ -135,6 +135,8 @@ structure Expr :> EXPR = struct
       end
 
 
+    (** Not quite structural equality (=), since we want to ignore the name
+        annotations at binding sites. *)
     fun alphaEq (Bound b1) (Bound b2) = b1 = b2
       | alphaEq (Free f1) (Free f2) = Var.eq f1 f2
       | alphaEq (Lam (CBind (_, e1))) (Lam (CBind (_, e2))) = alphaEq e1 e2
@@ -154,6 +156,15 @@ structure Expr :> EXPR = struct
 
     datatype side = LEFT | RIGHT | NO
 
+    (** (1) This is kind of messy because we're actually doing pretty printing here,
+            so we need to keep track of precedence and associativity of various operators.
+        (2) It's better to do this "internally" (directly on the LN representation)
+            rather than "externally" (via the view mechanism) because then we can see
+            exactly what unique ids are on each free variable and binding annotation.
+            The view mechanism does a bunch of freshening and opening that obscures the
+            original ids. For anything but debugging the binding structure, the other way
+            would be fine. But for debugging binding this is much better.
+     *)
     fun toString e =
       let fun prec_of (Free _) = BOT
             | prec_of (Bound _) = BOT
