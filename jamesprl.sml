@@ -784,10 +784,17 @@ structure Sequent : SEQUENT = struct
 end
 
 structure Derivation = struct
+  open Expr
+
   datatype t = Hyp of Var.t
              | HypEq of Var.t
              | PiIntro of Var.t * t * t
              | UniEq of int
+
+  fun extract (Hyp x) = `(Var x)
+    | extract (HypEq x) = `Tt
+    | extract (PiIntro (x, A, B)) = `(Lam (Bind (x, extract B)))
+    | extract (UniEq _) = `Tt
 end
 
 structure TacticResult = struct
@@ -981,7 +988,8 @@ structure Refiner = struct
     handle Tactic.InternalError msg => Failed ("InternalError: " ^ msg)
          | Tactic.ExternalError msg => Failed msg
 
-  fun resultToString (Proved d) = "Proved!"
+  fun resultToString (Proved d) = "Proved! Extract:\n" ^
+                                  Expr.toString (Derivation.extract d) ^ "\n"
     | resultToString (Incomplete l) =
       "Remaining subgoals:\n" ^
       String.concatWith "\n\n" (List.map Sequent.toString l)
