@@ -881,18 +881,22 @@ structure Rules = struct
   end
 
   structure Pi = struct
+    open Expr
+
     (* H >> (x : A) -> B
      *     H >> A in U{i}
      *     H, x : A >> B
      *)
     fun Intro level ox (H >> C) =
-      let val Expr.Pi (A, Expr.Bind (x, B)) = Expr.outof C
+      let val (A, x, B) = case outof C of
+                              Pi (A, Bind (x, B)) => (A, x, B)
+                           | _ => raise ExternalError "Pi.Intro expects conclusion to be Pi"
           val (x, B) = case ox of
                            NONE => (x, B)
                          | SOME y => let val y = Var.named y
-                                     in (y, Expr.rename x y B) end
+                                     in (y, rename x y B) end
       in
-          {subgoals = [H >> `(Expr.Eq (A, A, `(Expr.Univ level))),
+          {subgoals = [H >> `(Eq (A, A, `(Univ level))),
                        (x, A) :: H >> B],
            evidence = fn [d1, d2] => Derivation.PiIntro (x, d1, d2)
            | _ => raise InternalError "Pi.Intro" }
