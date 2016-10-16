@@ -251,6 +251,24 @@ structure Expr :> EXPR = struct
   val toString = I.toString
 end
 
+structure Conv = struct
+  open Expr
+
+  fun deep f e =
+    let val e' =
+        case outof e of
+            Var v => ` (Var v)
+          | Lam (Bind (x, e)) => ` (Lam (Bind (x, deep f e)))
+          | Ap (e1, e2) => ` (Ap (deep f e1, deep f e2))
+          | Pi (e1, Bind (x, e2)) => ` (Pi (deep f e1, Bind (x, deep f e2)))
+          | Univ i => ` (Univ i)
+          | Tt => ` Tt
+          | Eq (e1, e2, e3) => ` (Eq (deep f e1, deep f e2, deep f e3))
+    in
+        f e'
+    end
+end
+
 structure Eval = struct
   datatype result = Stuck | Value | Step of Expr.expr
 
