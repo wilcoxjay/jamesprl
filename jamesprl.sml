@@ -610,12 +610,12 @@ structure Parser :> PARSER = struct
       let val (e1, ts) = parse_term ts
       in case ts of
              (_, Equal) :: ts =>
-             let val (e2, ts) = parse_term ts
+             let val (e2, ts) = parse_expr ts
                  val ((), ts) = expect_tok "equality" In ts
-                 val (e3, ts) = parse_term ts
+                 val (e3, ts) = parse_expr ts
              in (ExprAst.Eq (e1, e2, e3), ts) end
            | (_, In) :: ts =>
-             let val (e3, ts) = parse_term ts
+             let val (e3, ts) = parse_expr ts
              in (ExprAst.Eq (e1, e1, e3), ts) end
            | _ => (e1, ts)
       end
