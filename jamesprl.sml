@@ -251,6 +251,30 @@ structure Expr :> EXPR = struct
   val toString = I.toString
 end
 
+structure Eval = struct
+  datatype result = Stuck | Value | Step of Expr.expr
+
+  fun step (e : Expr.expr) : result =
+    case Expr.outof e of
+       Expr.Var _ => Value
+     | Expr.Lam _ => Value
+     | Expr.Ap (e1, e2) =>
+      (case step e1 of
+           Stuck => Stuck
+         | Value => (case Expr.outof e1 of
+                         Expr.Lam (Expr.Bind (x, e)) => Step (Expr.subst x e2 e)
+                       | _ => Stuck)
+         | Step e1' => Step (Expr.into (Expr.Ap (e1', e2))))
+    | Expr.Pi _ => Value
+    | Expr.Univ _ => Value
+    | Expr.Tt => Value
+    | Expr.Eq _ => Value
+
+  fun eval e =
+    case step e of
+        Step e => eval e
+      | _ => e
+end
 
 fun assoc (k : string) [] = raise Subscript
   | assoc k ((k1,v1) :: l) = if k = k1 then v1 else assoc k l
