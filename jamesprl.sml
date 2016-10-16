@@ -790,11 +790,13 @@ structure Derivation = struct
              | HypEq of Var.t
              | PiIntro of Var.t * t * t
              | UniEq of int
+             | LamEq of Var.t * t * t
 
   fun extract (Hyp x) = `(Var x)
     | extract (HypEq x) = `Tt
     | extract (PiIntro (x, A, B)) = `(Lam (Bind (x, extract B)))
     | extract (UniEq _) = `Tt
+    | extract (LamEq (x, e1, e2)) = `Tt
 end
 
 structure TacticResult = struct
@@ -921,6 +923,26 @@ structure Rules = struct
                        (x, A) :: H >> B],
            evidence = fn [d1, d2] => Derivation.PiIntro (x, d1, d2)
            | _ => raise InternalError "Pi.Intro" }
+      end
+
+
+    (* H >> (\x. e1) = (\x. e2) in (x : A) -> B
+     *     H >> A in U{i}
+     *     H, x : A >> e1 = e2 in B
+     *)
+    fun LamEq level (H >> C) =
+      let val (x, e1, y, e2, A, z, B) =
+              case outof C of
+                  Eq (lhs, rhs, ty) =>
+                  (case (outof lhs, outof rhs, outof ty) of
+                       (Lam (Bind (x, e1)),  Lam (Bind (y, e2)), Pi (A, Bind (z, B))) =>
+                       (x, e1, y, e2, A, z, B)
+                    | _ => raise ExternalError "Pi.LamEq expects an equality between lambdas in a Pi type")
+               | _ => raise ExternalError "Pi.LamEq expects an equality"
+      in { subgoals = [H >> `(Eq (A, A, `(Univ level))),
+                       (x, A) :: H >> `(Eq (e1, rename y x e2, rename z x B))],
+           evidence = fn [d1, d2] => Derivation.LamEq (x, d1, d2)
+                      | _ => raise InternalError "Pi.LamEq"}
       end
   end
 
