@@ -7,3 +7,9 @@ theorem identity : (A : U{0}) -> A -> A {
     ]
   ]
 }.
+
+theorem beta : (\A. \x. (\x. x) x) in (A : U{0}) -> A -> A {
+  reduce;
+  eq with U{1}; [eq, id];
+  eq with U{0}; hypeq
+}.
