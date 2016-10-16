@@ -369,7 +369,7 @@ structure TacticAst = struct
     Id
   | Intro of ExprAst.t option * string option
   | Elim of string * ExprAst.t option
-  | Eq
+  | Eq of ExprAst.t option
   | Fail
   | Then of t * t
   | ThenL of t * t list
@@ -385,7 +385,7 @@ structure TacticAst = struct
     | asToString (SOME x) = " as " ^ x
 
   fun toString Id = "id"
-    | toString Eq = "eq"
+    | toString (Eq oe) = "eq" ^ withToString oe
     | toString Fail = "fail"
     | toString (Intro (oe, ox)) = "intro" ^ withToString oe ^ asToString ox
     | toString (Elim (x, oe)) = "elim " ^ x ^ withToString oe
@@ -690,7 +690,9 @@ structure Parser :> PARSER = struct
     in go tac ts end
   and parse_tactic2 ((_, Id "fail") :: ts) = (TacticAst.Fail, ts)
     | parse_tactic2 ((_, Id "id") :: ts) = (TacticAst.Id, ts)
-    | parse_tactic2 ((_, Id "eq") :: ts) = (TacticAst.Eq, ts)
+    | parse_tactic2 ((_, Id "eq") :: ts) =
+      let val (oe, ts) = parse_with ts
+      in (TacticAst.Eq oe, ts) end
     | parse_tactic2 ((_, Id "intro") :: ts) =
       let val (oe, ts) = parse_with ts
           val (ox, ts) = parse_as ts
@@ -967,15 +969,17 @@ structure Rules = struct
                                "rather than " ^ Expr.toString C)
   end
 
-  fun Intro oe =
+  fun wrap_level oe t =
     case oe of
         NONE => FAIL
-     | SOME e => (case Expr.outof (ExprAst.toExpr [] e) of
-                     Expr.Univ i => Pi.Intro i
-                  | _ => FAIL)
+      | SOME e => (case Expr.outof (ExprAst.toExpr [] e) of
+                       Expr.Univ i => t i
+                     | _ => FAIL)
+  fun Intro oe =
+    wrap_level oe Pi.Intro
 
-  val Eq =
-      Univ.MemEq
+  fun Eq oe =
+      ORELSE (Univ.MemEq, wrap_level oe Pi.LamEq)
 
   fun Elim x oe = FAIL
 end
@@ -986,7 +990,7 @@ structure TacticInterpreter = struct
   fun interpret Id = ID
     | interpret (Intro (oe, ox)) = Rules.Intro oe ox
     | interpret (Elim (x, oe)) = Rules.Elim x oe
-    | interpret Eq = Rules.Eq
+    | interpret (Eq oe) = Rules.Eq oe
     | interpret Fail = FAIL
     | interpret (Then (t1, t2)) = THEN (interpret t1, interpret t2)
     | interpret (ThenL (t, l)) = THENL (interpret t, List.map interpret l)
