@@ -42,6 +42,8 @@ signature EXPR = sig
   val outof : expr -> expr view
   val into : expr view -> expr
 
+  val ` : expr view -> expr
+
   val rename : Var.t -> Var.t -> expr -> expr
 
   val toString : expr -> string
@@ -240,6 +242,8 @@ structure Expr :> EXPR = struct
     | into (Pi (e1, xe2)) = I.Pi (e1, bind xe2)
     | into (Univ i) = I.Univ i
     | into (Eq (e1, e2, e3)) = I.Eq (e1, e2, e3)
+
+  fun ` v = into v
 
   val toString = I.toString
 end
@@ -780,7 +784,6 @@ structure Rules = struct
 
   infix >>
 
-  fun ` v = Expr.into v
   fun (x, e) :: tel = Telescope.extend x e tel
 
   fun getHyp x H =
