@@ -363,6 +363,7 @@ structure TacticAst = struct
   | OrElse of t * t
   | Hyp of string
   | HypEq
+  | Reduce
 
   fun withToString NONE = ""
     | withToString (SOME e) = " with " ^ ExprAst.toString e
@@ -384,6 +385,7 @@ structure TacticAst = struct
     | toString (OrElse (t1, t2)) = toString t1 ^ " | " ^ toString t2
     | toString (Hyp x) = "hyp " ^ x
     | toString HypEq = "hypeq"
+    | toString Reduce = "reduce"
 end
 
 structure CommandAst = struct
@@ -691,6 +693,7 @@ structure Parser :> PARSER = struct
       let val (tac, ts) = parse_tactic ts
           val ((), ts) = expect_tok "parenthesized tactic" RParen ts
       in (tac, ts) end
+    | parse_tactic2 ((_, Id "reduce") :: ts) = (TacticAst.Reduce, ts)
     | parse_tactic2 ts = report_error "tactic" ts
 
 
@@ -720,9 +723,12 @@ signature TELESCOPE = sig
   val lookup : Var.t -> t -> Expr.expr option
   val extend : Var.t -> Expr.expr -> t -> t
   val toEnv : t -> (string * Var.t) list
+  val map : (Expr.expr -> Expr.expr) -> t -> t
 end
 
 structure Telescope :> TELESCOPE = struct
+  open Expr
+
   (* stored in reverse! *)
   type t = (Var.t * Expr.expr) list
 
@@ -741,6 +747,8 @@ structure Telescope :> TELESCOPE = struct
   fun extend x e tel = (x, e) :: tel
 
   val toEnv : t -> (string * Var.t) list = List.map (fn (v, _) => (Var.name v, v))
+
+  val map : (expr -> expr) -> t -> t = fn f => List.map (fn (x, e) => (x, f e))
 end
 
 signature SEQUENT = sig
@@ -864,6 +872,12 @@ structure Rules = struct
                                          Expr.toString rhs))
         | _ => raise ExternalError ("HypEq expects equality goal rather than " ^
                                     Expr.toString C)
+
+
+
+    fun Reduce (H >> C) =
+      { subgoals = [Telescope.map (Conv.deep Eval.eval) H >> Conv.deep Eval.eval C],
+        evidence = fn [d] => d | _ => raise InternalError "Reduce" }
   end
 
   structure Pi = struct
@@ -932,6 +946,7 @@ structure TacticInterpreter = struct
     | interpret (OrElse (t1, t2)) = ORELSE (interpret t1, interpret t2)
     | interpret (Hyp x) = Rules.General.Hyp x
     | interpret HypEq = Rules.General.HypEq
+    | interpret Reduce = Rules.General.Reduce
 end
 
 structure Refiner = struct
