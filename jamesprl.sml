@@ -46,6 +46,8 @@ signature EXPR = sig
 
   val rename : Var.t -> Var.t -> expr -> expr
 
+  val subst : Var.t -> expr -> expr -> expr
+
   val toString : expr -> string
 end
 
@@ -100,9 +102,7 @@ structure Expr :> EXPR = struct
 *)
 
     fun opn to e =
-      let fun go from (Bound b) = if from = b then Free to
-                                  else if from < b then Bound (b - 1)
-                                  else Bound b
+      let fun go from (Bound b) = if from = b then to else Bound b
             | go from (Free f) = Free f
             | go from (Lam (CBind (x, e))) = Lam (CBind (x, go (from + 1) e))
             | go from (Ap (e1, e2)) = Ap (go from e1, go from e2)
@@ -126,14 +126,16 @@ structure Expr :> EXPR = struct
           go 0 e
       end
 
-    fun rename from to e = opn to (close from e)
+    fun subst from to e = opn to (close from e)
+
+    fun rename from to e = opn (Free to) (close from e)
 
     fun bind (Bind (from, e)) = CBind (from, (close from e))
 
     fun unbind (CBind (to, e)) =
       let val to = Var.freshen to
       in
-          Bind (to, opn to e)
+          Bind (to, opn (Free to) e)
       end
 
 
@@ -225,6 +227,7 @@ structure Expr :> EXPR = struct
   val alphaEq = I.alphaEq
 
   val rename = I.rename
+  val subst = I.subst
 
   exception NotLocallyClosed
 
