@@ -867,16 +867,20 @@ structure Derivation = struct
   datatype t = Hyp of Var.t
              | HypEq of Var.t
              | PiIntro of Var.t * t * t
+             | PiEq of Var.t * t * t
              | UniEq of int
              | LamEq of Var.t * t * t
              | IsectIntro of Var.t * t * t
+             | IsectEq of Var.t * t * t
 
   fun extract (Hyp x) = `(Var x)
     | extract (HypEq x) = `Tt
     | extract (PiIntro (x, A, B)) = `(Lam (Bind (x, extract B)))
+    | extract (PiEq (x, A, B)) = `Tt
     | extract (UniEq _) = `Tt
     | extract (LamEq (x, e1, e2)) = `Tt
     | extract (IsectIntro (x, A, B)) = subst x (`Tt) (extract B)
+    | extract (IsectEq (x, A, B)) = `Tt
 end
 
 structure TacticResult = struct
@@ -1027,6 +1031,25 @@ structure Rules = struct
            evidence = fn [d1, d2] => Derivation.LamEq (x, d1, d2)
                       | _ => raise InternalError "Pi.LamEq"}
       end
+
+    (* H >> (x : A1) -> B1 = (x : A2) -> B2 in U{i}
+     *     H >> A1 = A2 in U{i}
+     *     H, x : A1 >> B1 = B2 in U{i}
+     *)
+    fun Eq (H >> C) =
+      let val (x, A1, B1, y, A2, B2, i) =
+              case outof C of
+                  Expr.Eq (lhs, rhs, ty) =>
+                  (case (outof lhs, outof rhs, outof ty) of
+                       (Pi (A1, Bind (x, B1)), Pi (A2, Bind (y, B2)), Univ i) =>
+                       (x, A1, B1, y, A2, B2, i)
+                     | _ => raise ExternalError "Pi.Eq expects an equality between pis in a universe")
+               | _ => raise ExternalError "Pi.Eq expects an equality"
+      in { subgoals = [H >> `(Expr.Eq (A1, A2, `(Univ i))),
+                       (x, A1) :: H >> `(Expr.Eq (B1, rename y x B2, `(Univ i)))],
+           evidence = fn [d1, d2] => Derivation.PiEq (x, d1, d2)
+                              | _ => raise InternalError "Pi.Eq" }
+      end
   end
 
   structure Isect = struct
@@ -1049,6 +1072,25 @@ structure Rules = struct
                        (x, false, A) ::: H >> B],
            evidence = fn [d1, d2] => Derivation.IsectIntro (x, d1, d2)
            | _ => raise InternalError "Isect.Intro" }
+      end
+
+    (* H >> {x : A1} B1 = {x : A2} B2 in U{i}
+     *     H >> A1 = A2 in U{i}
+     *     H, [x : A1] >> B1 = B2 in U{i}
+     *)
+    fun Eq (H >> C) =
+      let val (x, A1, B1, y, A2, B2, i) =
+              case outof C of
+                  Expr.Eq (lhs, rhs, ty) =>
+                  (case (outof lhs, outof rhs, outof ty) of
+                       (Isect (A1, Bind (x, B1)), Isect (A2, Bind (y, B2)), Univ i) =>
+                       (x, A1, B1, y, A2, B2, i)
+                     | _ => raise ExternalError "Isect.Eq expects an equality between pis in a universe")
+               | _ => raise ExternalError "Isect.Eq expects an equality"
+      in { subgoals = [H >> `(Expr.Eq (A1, A2, `(Univ i))),
+                       (x, false, A1) ::: H >> `(Expr.Eq (B1, rename y x B2, `(Univ i)))],
+           evidence = fn [d1, d2] => Derivation.IsectEq (x, d1, d2)
+                              | _ => raise InternalError "Isect.Eq" }
       end
   end
 
@@ -1087,6 +1129,8 @@ structure Rules = struct
   fun Eq oe =
              Univ.MemEq
       ORELSE wrap_level oe Pi.LamEq
+      ORELSE Pi.Eq
+      ORELSE Isect.Eq
 
   fun Elim x oe = FAIL
 end
