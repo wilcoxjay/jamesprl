@@ -180,9 +180,8 @@ structure Expr :> EXPR = struct
           go e
       end
 
-    val TOP = 5
-    val LAM = 4
-    val EQ = 3
+    val TOP = 4
+    val LAM = 3
     val AP = 2
     val BOT = 0
 
@@ -205,7 +204,7 @@ structure Expr :> EXPR = struct
             | prec_of (Pi _) = LAM
             | prec_of (Univ _) = BOT
             | prec_of Tt = BOT
-            | prec_of (Eq _) = EQ
+            | prec_of (Eq _) = LAM
             | prec_of (Isect _) = LAM
 
           fun assoc_of (Free _) = NO
@@ -215,7 +214,7 @@ structure Expr :> EXPR = struct
             | assoc_of (Pi _) = RIGHT
             | assoc_of (Univ _) = NO
             | assoc_of Tt = NO
-            | assoc_of (Eq _) = NO
+            | assoc_of (Eq _) = RIGHT
             | assoc_of (Isect _) = RIGHT
 
 
@@ -242,11 +241,11 @@ structure Expr :> EXPR = struct
               | Tt => "tt"
               | Eq (e1, e2, e3) =>
                 if alphaEq e1 e2
-                then go env EQ NO e1 ^ " in " ^
-                     go env EQ NO e3
-                else go env EQ NO e1 ^ " = " ^
-                     go env EQ NO e2 ^ " in " ^
-                     go env EQ NO e3
+                then go env LAM NO e1 ^ " in " ^
+                     go env LAM RIGHT e3
+                else go env LAM NO e1 ^ " = " ^
+                     go env LAM NO e2 ^ " in " ^
+                     go env LAM RIGHT e3
               | Isect (e1, CBind (v, e2)) => "{" ^ Var.toString v ^ " : " ^
                                              go env TOP NO e1 ^ "} " ^
                                              go (v :: env) LAM RIGHT e2
@@ -680,7 +679,7 @@ structure Parser :> PARSER = struct
       let val (e1, ts) = parse_term ts
       in case ts of
              (_, Equal) :: ts =>
-             let val (e2, ts) = parse_expr ts
+             let val (e2, ts) = parse_term ts
                  val ((), ts) = expect_tok "equality" In ts
                  val (e3, ts) = parse_expr ts
              in (ExprAst.Eq (e1, e2, e3), ts) end
