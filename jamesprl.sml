@@ -344,8 +344,10 @@ structure Eval = struct
       | _ => e
 end
 
-fun assoc (k : string) [] = raise Subscript
-  | assoc k ((k1,v1) :: l) = if k = k1 then v1 else assoc k l
+structure ListUtil = struct
+  fun assoc (k : string) [] = raise Subscript
+    | assoc k ((k1,v1) :: l) = if k = k1 then v1 else assoc k l
+end
 
 structure ExprAst = struct
   datatype t =
@@ -362,7 +364,7 @@ structure ExprAst = struct
   fun toExpr env a =
     let fun go env (Var s) =
           let in
-              Expr.into (Expr.Var (assoc s env))
+              Expr.into (Expr.Var (ListUtil.assoc s env))
               handle Subscript => raise Fail ("Unbound variable " ^ s)
           end
 
@@ -386,7 +388,7 @@ structure ExprAst = struct
       fun bad_toExpr a =
         let fun go env (Var s) =
                 let in
-                    Expr.into (Expr.Var (assoc s env))
+                    Expr.into (Expr.Var (ListUtil.assoc s env))
                     handle Subscript => Expr.into (Expr.Var (Var.named s))
                 end
               | go env (Lam (x, e)) =
@@ -920,8 +922,8 @@ structure Rules = struct
   fun (x, e) :: tel = Telescope.extend x e tel
 
   fun getHyp x H =
-    let val x = assoc x (Telescope.toEnv H)
     in case Telescope.lookup x H of
+    let val x = ListUtil.assoc x (Telescope.toEnv H)
            NONE => raise Subscript
          | SOME ty => (x, ty)
     end
