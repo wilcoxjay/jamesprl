@@ -35,6 +35,7 @@ signature EXPR = sig
                    | Univ of int
                    | Tt
                    | Eq of 'a * 'a * 'a
+                   | Isect of 'a * 'a binder
 
   type expr
 
@@ -64,7 +65,7 @@ structure Expr :> EXPR = struct
                    | Univ of int
                    | Tt
                    | Eq of 'a * 'a * 'a
-
+                   | Isect of 'a * 'a binder
 
   structure Internal = struct
     datatype 'a closed_binder = CBind of Var.t * 'a
@@ -101,6 +102,7 @@ structure Expr :> EXPR = struct
     *)
 
     | Eq of expr * expr * expr
+    | Isect of expr * expr closed_binder
 (*
     | Ceq of expr * expr
 *)
@@ -114,6 +116,8 @@ structure Expr :> EXPR = struct
             | go from (Univ i) = Univ i
             | go from Tt = Tt
             | go from (Eq (e1, e2, e3)) = Eq (go from e1, go from e2, go from e3)
+            | go from (Isect (e1, CBind (x, e2))) =
+              Isect (go from e1, CBind (x, go (from + 1) e2))
       in
           go 0 e
       end
@@ -128,6 +132,7 @@ structure Expr :> EXPR = struct
             | go to (Univ i) = Univ i
             | go to Tt = Tt
             | go to (Eq (e1, e2, e3)) = Eq (go to e1, go to e2, go to e3)
+            | go to (Isect (e1, CBind (x, e2))) = Isect (go to e1, CBind (x, go (to + 1) e2))
       in
           go 0 e
       end
@@ -157,6 +162,8 @@ structure Expr :> EXPR = struct
       | alphaEq (Eq (e11, e12, e13)) (Eq (e21, e22, e23)) =
         alphaEq e11 e21 andalso alphaEq e12 e22 andalso alphaEq e13 e23
       | alphaEq Tt Tt = true
+      | alphaEq (Isect (e11, CBind (_, e12))) (Isect (e21, CBind (_, e22))) =
+        alphaEq e11 e21 andalso alphaEq e12 e22
       | alphaEq _ _ = false
 
     fun freeIn v e =
@@ -199,6 +206,7 @@ structure Expr :> EXPR = struct
             | prec_of (Univ _) = BOT
             | prec_of Tt = BOT
             | prec_of (Eq _) = EQ
+            | prec_of (Isect _) = LAM
 
           fun assoc_of (Free _) = NO
             | assoc_of (Bound _) = NO
@@ -208,6 +216,8 @@ structure Expr :> EXPR = struct
             | assoc_of (Univ _) = NO
             | assoc_of Tt = NO
             | assoc_of (Eq _) = NO
+            | assoc_of (Isect _) = RIGHT
+
 
           fun no_parens prec side e =
             prec > prec_of e orelse
@@ -237,6 +247,10 @@ structure Expr :> EXPR = struct
                 else go env EQ NO e1 ^ " = " ^
                      go env EQ NO e2 ^ " in " ^
                      go env EQ NO e3
+              | Isect (e1, CBind (v, e2)) => "{" ^ Var.toString v ^ " : " ^
+                                             go env TOP NO e1 ^ "} " ^
+                                             go (v :: env) LAM RIGHT e2
+
           and go (env : Var.t list) (prec : int) (side : side) (e : expr) : string =
               let val s = one env e
               in if no_parens prec side e
@@ -269,6 +283,7 @@ structure Expr :> EXPR = struct
     | outof (I.Univ i) = Univ i
     | outof I.Tt = Tt
     | outof (I.Eq (e1, e2, e3)) = Eq (e1, e2, e3)
+    | outof (I.Isect (e1, xe2)) = Isect (e1, unbind xe2)
 
   fun into (Var v) = I.Free v
     | into (Lam xe) = I.Lam (bind xe)
@@ -277,6 +292,7 @@ structure Expr :> EXPR = struct
     | into (Univ i) = I.Univ i
     | into Tt = I.Tt
     | into (Eq (e1, e2, e3)) = I.Eq (e1, e2, e3)
+    | into (Isect (e1, xe2)) = I.Isect (e1, bind xe2)
 
   fun ` v = into v
 
@@ -296,6 +312,7 @@ structure Conv = struct
           | Univ i => ` (Univ i)
           | Tt => ` Tt
           | Eq (e1, e2, e3) => ` (Eq (deep f e1, deep f e2, deep f e3))
+          | Isect (e1, Bind (x, e2)) => ` (Isect (deep f e1, Bind (x, deep f e2)))
     in
         f e'
     end
@@ -319,6 +336,7 @@ structure Eval = struct
     | Expr.Univ _ => Value
     | Expr.Tt => Value
     | Expr.Eq _ => Value
+    | Expr.Isect _ => Value
 
   fun eval e =
     case step e of
@@ -339,6 +357,7 @@ structure ExprAst = struct
   | Univ of int
   | Tt
   | Eq of t * t * t
+  | Isect of string * t * t
 
   fun toExpr env a =
     let fun go env (Var s) =
@@ -358,6 +377,9 @@ structure ExprAst = struct
           | go env Tt = Expr.into Expr.Tt
           | go env (Eq (e1, e2, e3)) =
             Expr.into (Expr.Eq (go env e1, go env e2, go env e3))
+          | go env (Isect (x, e1, e2)) =
+            let val v = Var.named x
+            in Expr.into (Expr.Isect (go env e1, Expr.Bind (v, go ((x, v) :: env) e2))) end
     in go env a end
 
   local
@@ -378,6 +400,10 @@ structure ExprAst = struct
               | go env Tt = Expr.into Expr.Tt
               | go env (Eq (e1, e2, e3)) =
                 Expr.into (Expr.Eq (go env e1, go env e2, go env e3))
+              | go env (Isect (x, e1, e2)) =
+                let val v = Var.named x
+                in Expr.into (Expr.Isect (go env e1, Expr.Bind (v, go ((x, v) :: env) e2))) end
+
         in go [] a end
   in
     fun toString a =
@@ -633,6 +659,11 @@ structure Parser :> PARSER = struct
           val ((), ts) = expect_tok "pi" Arrow ts
           val (rhs, ts) = parse_expr ts
       in (ExprAst.Pi (x, lhs, rhs), ts) end
+    | parse_expr ((_, LBrace) :: (_, Id x) :: (_, Colon) :: ts) =
+      let val (lhs, ts) = parse_expr ts
+          val ((), ts) = expect_tok "isect" RBrace ts
+          val (rhs, ts) = parse_expr ts
+      in (ExprAst.Isect (x, lhs, rhs), ts) end
     | parse_expr ts =
       let val (f, ts) = parse_factor ts
           val (ou, ts) = detect_tok Arrow ts
