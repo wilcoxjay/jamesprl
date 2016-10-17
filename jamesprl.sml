@@ -793,8 +793,12 @@ signature TELESCOPE = sig
   val toString : t -> string
   val empty : t
   val isEmpty : t -> bool
-  val lookup : Var.t -> t -> Expr.expr option
-  val extend : Var.t -> Expr.expr -> t -> t
+
+  (* the bool says whether the variable must be visible *)
+  val lookup : bool -> Var.t -> t -> Expr.expr option
+
+  (* the bool says whether the variable is visible *)
+  val extend : bool -> Var.t -> Expr.expr -> t -> t
   val toEnv : t -> (string * Var.t) list
   val map : (Expr.expr -> Expr.expr) -> t -> t
 end
@@ -802,26 +806,42 @@ end
 structure Telescope :> TELESCOPE = struct
   open Expr
 
+  datatype visibility = Visible | Invisible
+
   (* stored in reverse! *)
-  type t = (Var.t * Expr.expr) list
+  type t = (Var.t * visibility * Expr.expr) list
 
   val empty : t = []
 
   fun toString tel =
-    let val lines = List.map (fn (v, e) => Var.toString v ^ " : " ^ Expr.toString e)
+    let val lines = List.map (fn (v, vis, e) =>
+                                 let val s = Var.toString v ^ " : " ^ Expr.toString e
+                                 in case vis of
+                                        Visible => s
+                                      | Invisible => "[" ^ s ^ "]"
+                                 end)
                              (List.rev tel)
     in String.concatWith "\n" lines end
 
   val isEmpty = List.null
 
-  fun lookup v [] = NONE
-    | lookup v ((x, e) :: tel) = if Var.eq v x then SOME e else lookup v tel
+  fun allowed _ Visible = true
+    | allowed false _ = true
+    | allowed true Invisible = false
 
-  fun extend x e tel = (x, e) :: tel
+  fun lookup b v [] = NONE
+    | lookup b v ((x, vis, e) :: tel) =
+      if Var.eq v x
+      then if allowed b vis
+           then SOME e
+           else NONE
+      else lookup b v tel
 
-  val toEnv : t -> (string * Var.t) list = List.map (fn (v, _) => (Var.name v, v))
+  fun extend b x e tel = (x, if b then Visible else Invisible, e) :: tel
 
-  val map : (expr -> expr) -> t -> t = fn f => List.map (fn (x, e) => (x, f e))
+  val toEnv : t -> (string * Var.t) list = List.map (fn (v, _, _) => (Var.name v, v))
+
+  val map : (expr -> expr) -> t -> t = fn f => List.map (fn (x, vis, e) => (x, vis, f e))
 end
 
 signature SEQUENT = sig
@@ -919,11 +939,11 @@ structure Rules = struct
 
   infix >>
 
-  fun (x, e) :: tel = Telescope.extend x e tel
+  fun (x, e) :: tel = Telescope.extend true x e tel
 
-  fun getHyp x H =
-    in case Telescope.lookup x H of
+  fun getHyp b x H =
     let val x = ListUtil.assoc x (Telescope.toEnv H)
+    in case Telescope.lookup b x H of
            NONE => raise Subscript
          | SOME ty => (x, ty)
     end
@@ -932,7 +952,7 @@ structure Rules = struct
 
   structure General = struct
     fun Hyp x (H >> C) =
-      let val (x, ty) = getHyp x H
+      let val (x, ty) = getHyp true x H
       in if not (Expr.alphaEq ty C)
          then raise ExternalError ("Hyp: Hypothesis " ^ Var.toString x ^ " has type " ^
                                Expr.toString ty ^ " rather than goal type " ^
