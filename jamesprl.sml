@@ -870,12 +870,14 @@ structure Derivation = struct
              | PiIntro of Var.t * t * t
              | UniEq of int
              | LamEq of Var.t * t * t
+             | IsectIntro of Var.t * t * t
 
   fun extract (Hyp x) = `(Var x)
     | extract (HypEq x) = `Tt
     | extract (PiIntro (x, A, B)) = `(Lam (Bind (x, extract B)))
     | extract (UniEq _) = `Tt
     | extract (LamEq (x, e1, e2)) = `Tt
+    | extract (IsectIntro (x, A, B)) = subst x (`Tt) (extract B)
 end
 
 structure TacticResult = struct
@@ -940,6 +942,9 @@ structure Rules = struct
   infix >>
 
   fun (x, e) :: tel = Telescope.extend true x e tel
+
+  infix :::
+  fun (x, b, e) ::: tel = Telescope.extend b x e tel
 
   fun getHyp b x H =
     let val x = ListUtil.assoc x (Telescope.toEnv H)
@@ -1025,6 +1030,29 @@ structure Rules = struct
       end
   end
 
+  structure Isect = struct
+    open Expr
+
+    (* H >> {x : A} -> B
+     *     H >> A in U{i}
+     *     H, [x : A] >> B
+     *)
+    fun Intro level ox (H >> C) =
+      let val (A, x, B) = case outof C of
+                              Isect (A, Bind (x, B)) => (A, x, B)
+                           | _ => raise ExternalError "Isect.Intro expects conclusion to be Isect"
+          val (x, B) = case ox of
+                           NONE => (x, B)
+                         | SOME y => let val y = Var.named y
+                                     in (y, rename x y B) end
+      in
+          {subgoals = [H >> `(Eq (A, A, `(Univ level))),
+                       (x, false, A) ::: H >> B],
+           evidence = fn [d1, d2] => Derivation.IsectIntro (x, d1, d2)
+           | _ => raise InternalError "Isect.Intro" }
+      end
+  end
+
   structure Univ = struct
     fun MemEq (H >> C) =
       case Expr.outof C of
@@ -1052,11 +1080,14 @@ structure Rules = struct
       | SOME e => (case Expr.outof (ExprAst.toExpr [] e) of
                        Expr.Univ i => t i
                      | _ => FAIL)
-  fun Intro oe =
-    wrap_level oe Pi.Intro
+  infix ORELSE
+  fun Intro oe ox =
+           (wrap_level oe Pi.Intro ox)
+    ORELSE (wrap_level oe Isect.Intro ox)
 
   fun Eq oe =
-      ORELSE (Univ.MemEq, wrap_level oe Pi.LamEq)
+             Univ.MemEq
+      ORELSE wrap_level oe Pi.LamEq
 
   fun Elim x oe = FAIL
 end
