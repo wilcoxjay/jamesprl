@@ -50,6 +50,8 @@ signature EXPR = sig
   val subst : Var.t -> expr -> expr -> expr
 
   val toString : expr -> string
+
+  val freeIn : Var.t -> expr -> bool
 end
 
 structure Expr :> EXPR = struct
@@ -157,6 +159,20 @@ structure Expr :> EXPR = struct
       | alphaEq Tt Tt = true
       | alphaEq _ _ = false
 
+    fun freeIn v e =
+      let fun go (Bound b) = false
+            | go (Free f) = Var.eq v f
+            | go (Lam (CBind (x, e))) = go e
+            | go (Ap (e1, e2)) = go e1 orelse go e2
+            | go (Pi (e1, CBind (x, e2))) = go e1 orelse go e2
+            | go (Univ i) = false
+            | go Tt = false
+            | go (Eq (e1, e2, e3)) = go e1 orelse go e2 orelse go e3
+            | go (Isect (e1, CBind (x, e2))) = go e1 orelse go e2
+      in
+          go e
+      end
+
     val TOP = 5
     val LAM = 4
     val EQ = 3
@@ -204,9 +220,14 @@ structure Expr :> EXPR = struct
               | Lam (CBind (v, e)) =>
                 "\\" ^ Var.toString v ^ ". " ^ go (v :: env) LAM RIGHT e
               | Ap (e1, e2) => go env AP LEFT e1 ^ " " ^ go env AP RIGHT e2
-              | Pi (e1, CBind (v, e2)) => "(" ^ Var.toString v ^ " : " ^
-                                          go env TOP NO e1 ^ ") -> " ^
-                                          go (v :: env) LAM RIGHT e2
+              | Pi (e1, CBind (v, e2)) =>
+                if freeIn v e2
+                then
+                    "(" ^ Var.toString v ^ " : " ^
+                    go env TOP NO e1 ^ ") -> " ^
+                    go (v :: env) LAM RIGHT e2
+                else go env LAM LEFT e1 ^ " -> " ^
+                     go (v :: env) LAM RIGHT e2
               | Univ i => "U{" ^ Int.toString i ^ "}"
               | Tt => "tt"
               | Eq (e1, e2, e3) =>
@@ -236,6 +257,7 @@ structure Expr :> EXPR = struct
 
   val rename = I.rename
   val subst = I.subst
+  val freeIn = I.freeIn
 
   exception NotLocallyClosed
 
