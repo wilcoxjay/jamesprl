@@ -451,7 +451,7 @@ structure Token = struct
     | Univ of int | Equal
     | LBrace | RBrace | LBracket | RBracket | Comma
     | ColonEqual | SemiColon | VertBar
-    | In | As
+    | In | As | With
 
   fun toString Dot = "."
     | toString Backslash = "\\"
@@ -470,6 +470,7 @@ structure Token = struct
     | toString ColonEqual = ":="
     | toString SemiColon = ";"
     | toString VertBar = "|"
+    | toString With = "With"
     | toString In = "in"
     | toString As = "as"
 
@@ -548,7 +549,8 @@ structure Tokenizer :> TOKENIZER = struct
                  in case id of
                         "in" => go p' ((p, In) :: acc) cs
                       | "as" => go p' ((p, As) :: acc) cs
-                     | _ => go p' ((p, Id id) :: acc) cs
+                      | "with" => go p' ((p, With) :: acc) cs
+                      | _ => go p' ((p, Id id) :: acc) cs
                  end
             else raise LexicalError (Position.toString p ^ ": Unexpected character '" ^
                                      Char.toString c ^ "'")
@@ -673,7 +675,7 @@ structure Parser :> PARSER = struct
            | SOME f => go f ts
       end
 
-  fun parse_with ((_, Id "with") :: ts) =
+  fun parse_with ((_, With) :: ts) =
       let val (e, ts) = parse_expr ts
       in (SOME e, ts) end
     | parse_with ts = (NONE, ts)
