@@ -19,3 +19,11 @@ theorem isect : {A : U{0}} A -> A {
   intro with U{0} as x; [hypeq, id];
   hyp x
 }.
+
+theorem polyid : (f : {A : U{0}} A -> A) -> f = (\x. x) in {A : U{0}} A -> A {
+  intro with U{1};
+  [ eq; [eq, eq; hypeq]
+  , id
+  ]
+}.
+
