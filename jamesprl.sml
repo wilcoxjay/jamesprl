@@ -1095,23 +1095,23 @@ structure Rules = struct
   end
 
   structure Univ = struct
-    fun MemEq (H >> C) =
+    fun Eq (H >> C) =
       case Expr.outof C of
           Expr.Eq (lhs, rhs, ty) =>
           (case (Expr.outof lhs, Expr.outof rhs, Expr.outof ty) of
                (Expr.Univ i, Expr.Univ j, Expr.Univ k) =>
                if i <> j
-               then raise ExternalError "Univ.MemEq: These universes do not have the same level"
+               then raise ExternalError "Univ.Eq: These universes do not have the same level"
                else if i + 1 <> k
-               then raise ExternalError ("Univ.MemEq: Level " ^ Int.toString k ^
+               then raise ExternalError ("Univ.Eq: Level " ^ Int.toString k ^
                                      " is not the successor of level " ^
                                      Int.toString i)
                else { subgoals = [],
                       evidence = fn _ => Derivation.UniEq i}
 
-            | _ => raise ExternalError ("Univ.MemEq expects an equality between universes " ^
+            | _ => raise ExternalError ("Univ.Eq expects an equality between universes " ^
                                     "in a universe, rather than " ^ Expr.toString C))
-       | _ => raise ExternalError ("Univ.MemEq expects an equality " ^
+       | _ => raise ExternalError ("Univ.Eq expects an equality " ^
                                "rather than " ^ Expr.toString C)
   end
 
@@ -1127,7 +1127,7 @@ structure Rules = struct
     ORELSE (wrap_level oe Isect.Intro ox)
 
   fun Eq oe =
-             Univ.MemEq
+             Univ.Eq
       ORELSE wrap_level oe Pi.LamEq
       ORELSE Pi.Eq
       ORELSE Isect.Eq
