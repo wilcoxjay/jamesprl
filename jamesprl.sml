@@ -22,7 +22,7 @@ struct
 
   fun name (s, _) = s
 
-  fun toString (s, n) = s ^ "@" ^ Int.toString n
+  fun toString (s, n) = s (* ^ "@" ^ Int.toString n *)
 end
 
 signature EXPR = sig
