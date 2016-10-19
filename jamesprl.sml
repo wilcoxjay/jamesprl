@@ -1290,7 +1290,7 @@ structure Refiner = struct
                                   Expr.toString (Derivation.extract d) ^ "\n"
     | resultToString (Incomplete l) =
       "Remaining subgoals:\n" ^
-      String.concatWith "\n\n" (List.map Sequent.toString l)
+      String.concatWith "\n\n" (List.map Sequent.toString l) ^ "\n"
     | resultToString (Failed msg) = "Failed! " ^ msg
 end
 
