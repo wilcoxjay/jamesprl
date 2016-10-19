@@ -1126,7 +1126,7 @@ structure Rules = struct
 
     (* H >> {x : A1} B1 = {x : A2} B2 in U{i}
      *     H >> A1 = A2 in U{i}
-     *     H, [x : A1] >> B1 = B2 in U{i}
+     *     H, x : A1 >> B1 = B2 in U{i}
      *)
     fun Eq (H >> C) =
       let val (x, A1, B1, y, A2, B2, i) =
@@ -1138,7 +1138,7 @@ structure Rules = struct
                      | _ => raise ExternalError "Isect.Eq expects an equality between pis in a universe")
                | _ => raise ExternalError "Isect.Eq expects an equality"
       in { subgoals = [H >> `(Expr.Eq (A1, A2, `(Univ i))),
-                       (x, false, A1) ::: H >> `(Expr.Eq (B1, rename y x B2, `(Univ i)))],
+                       (x, A1) :: H >> `(Expr.Eq (B1, rename y x B2, `(Univ i)))],
            evidence = fn [d1, d2] => Derivation.IsectEq (x, d1, d2)
                               | _ => raise InternalError "Isect.Eq" }
       end
