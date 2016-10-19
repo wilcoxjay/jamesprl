@@ -34,7 +34,7 @@ The following words may not be used as variable names
 - `as`
 - `with`
 
-Otherwise, variables may consist of any sequence of letters. 
+Otherwise, variables may consist of any sequence of letters and underscores. 
 
 ## Expression Syntax
 At the time of writing, the `jamesprl` computation system supports the following constructs:

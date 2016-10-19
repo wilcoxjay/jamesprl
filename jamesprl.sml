@@ -534,7 +534,7 @@ structure Tokenizer :> TOKENIZER = struct
     end
 
   val tokenize_id : Position.t -> char list -> Position.t * string * char list =
-      tokenize_word Char.isAlpha
+      tokenize_word (fn x => Char.isAlpha x orelse x = #"_")
   val tokenize_int : Position.t -> char list -> Position.t * string * char list =
       tokenize_word Char.isDigit
 
