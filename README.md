@@ -4,7 +4,7 @@
 Ensure that `sml` is in your path. Then build with `./configure` and `make`.
 
 ## Test
-After building, run the test with `./jamesprl tests/example.jamesprl`. The beginning of 
+After building, run the test with `./jamesprl example.jamesprl`. The beginning of 
 the output should be something like:
 ```
 Got command:
