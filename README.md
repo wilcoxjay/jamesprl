@@ -63,8 +63,11 @@ At the time of writing, the `jamesprl` computation system supports the following
     - `(\x. e1) = (\y. e2) in (z : A) -> B` the `with` form is required in this case, in order to give a universe level in which `A` lives
     - `(x : A1) -> B1 = (y : A2) -> B2 in U{i}`
     - `{x : A1} B1 = {y : A2} B2 in U{i}`
-- `elim x [with <expr>]` generic elimination tactic. Looks at the type of `x` and does one step of elimination. At the time of writing, `elim` parses successfully but does not work on any types.
+    - `e1 = e2 in {x : A} B`
+- `elim x [with <expr>]` generic elimination tactic. Looks at the type of `x` and does one step of elimination. At the time of writing, `elim` only supports intersection types.
 - `reduce` performs as much computation as possible everywhere (analogous to `compute in *` in Coq, except that it may not terminate (but let's be real, `compute in *` may not *practically* terminate either))
+- `ext [as x]` invokes the function extensionality rule.
+- `subst with e1 = e2 in A` generates a subgoal to prove the given equality, and then replaces all occurrences of `e1` with `e2` in the main goal.
 
 ## Commands
 At the time of writing, `jamesprl` supports two commands:
