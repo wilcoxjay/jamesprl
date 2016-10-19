@@ -1580,5 +1580,6 @@ structure Main = struct
     end
     handle Parser.ParseError msg => (print ("ParseError " ^ msg ^ "\n"); 1)
         | Tokenizer.LexicalError msg => (print ("LexicalError " ^ msg ^ "\n"); 1)
+        | Tactic.ExternalError msg => (print ("ExternalError " ^ msg ^ "\n"); 1)
         | e => (print ("Exception : " ^ exnName e ^ " " ^ exnMessage e ^ "\n"); 1)
 end
