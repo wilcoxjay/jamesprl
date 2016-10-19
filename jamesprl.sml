@@ -36,6 +36,7 @@ signature EXPR = sig
                    | Tt
                    | Eq of 'a * 'a * 'a
                    | Isect of 'a * 'a binder
+                   | Subset of 'a * 'a binder
 
   type expr
 
@@ -66,6 +67,7 @@ structure Expr :> EXPR = struct
                    | Tt
                    | Eq of 'a * 'a * 'a
                    | Isect of 'a * 'a binder
+                   | Subset of 'a * 'a binder
 
   structure Internal = struct
     datatype 'a closed_binder = CBind of Var.t * 'a
@@ -103,6 +105,7 @@ structure Expr :> EXPR = struct
 
     | Eq of expr * expr * expr
     | Isect of expr * expr closed_binder
+    | Subset of expr * expr closed_binder
 (*
     | Ceq of expr * expr
 *)
@@ -118,6 +121,8 @@ structure Expr :> EXPR = struct
             | go from (Eq (e1, e2, e3)) = Eq (go from e1, go from e2, go from e3)
             | go from (Isect (e1, CBind (x, e2))) =
               Isect (go from e1, CBind (x, go (from + 1) e2))
+            | go from (Subset (e1, CBind (x, e2))) =
+              Subset (go from e1, CBind (x, go (from + 1) e2))
       in
           go 0 e
       end
@@ -133,6 +138,7 @@ structure Expr :> EXPR = struct
             | go to Tt = Tt
             | go to (Eq (e1, e2, e3)) = Eq (go to e1, go to e2, go to e3)
             | go to (Isect (e1, CBind (x, e2))) = Isect (go to e1, CBind (x, go (to + 1) e2))
+            | go to (Subset (e1, CBind (x, e2))) = Subset (go to e1, CBind (x, go (to + 1) e2))
       in
           go 0 e
       end
@@ -164,6 +170,8 @@ structure Expr :> EXPR = struct
       | alphaEq Tt Tt = true
       | alphaEq (Isect (e11, CBind (_, e12))) (Isect (e21, CBind (_, e22))) =
         alphaEq e11 e21 andalso alphaEq e12 e22
+      | alphaEq (Subset (e11, CBind (_, e12))) (Subset (e21, CBind (_, e22))) =
+        alphaEq e11 e21 andalso alphaEq e12 e22
       | alphaEq _ _ = false
 
     fun freeIn v e =
@@ -176,6 +184,7 @@ structure Expr :> EXPR = struct
             | go Tt = false
             | go (Eq (e1, e2, e3)) = go e1 orelse go e2 orelse go e3
             | go (Isect (e1, CBind (x, e2))) = go e1 orelse go e2
+            | go (Subset (e1, CBind (x, e2))) = go e1 orelse go e2
       in
           go e
       end
@@ -206,6 +215,7 @@ structure Expr :> EXPR = struct
             | prec_of Tt = BOT
             | prec_of (Eq _) = LAM
             | prec_of (Isect _) = LAM
+            | prec_of (Subset _) = BOT
 
           fun assoc_of (Free _) = NO
             | assoc_of (Bound _) = NO
@@ -216,6 +226,7 @@ structure Expr :> EXPR = struct
             | assoc_of Tt = NO
             | assoc_of (Eq _) = RIGHT
             | assoc_of (Isect _) = RIGHT
+            | assoc_of (Subset _) = NO
 
 
           fun no_parens prec side e =
@@ -249,6 +260,10 @@ structure Expr :> EXPR = struct
               | Isect (e1, CBind (v, e2)) => "{" ^ Var.toString v ^ " : " ^
                                              go env TOP NO e1 ^ "} " ^
                                              go (v :: env) LAM RIGHT e2
+              | Subset (e1, CBind (v, e2)) =>
+                "{" ^ Var.toString v ^ " : " ^ go env TOP NO e1 ^ " | " ^
+                go (v :: env) TOP NO e2 ^ "}"
+
 
           and go (env : Var.t list) (prec : int) (side : side) (e : expr) : string =
               let val s = one env e
@@ -283,6 +298,7 @@ structure Expr :> EXPR = struct
     | outof I.Tt = Tt
     | outof (I.Eq (e1, e2, e3)) = Eq (e1, e2, e3)
     | outof (I.Isect (e1, xe2)) = Isect (e1, unbind xe2)
+    | outof (I.Subset (e1, xe2)) = Subset (e1, unbind xe2)
 
   fun into (Var v) = I.Free v
     | into (Lam xe) = I.Lam (bind xe)
@@ -292,6 +308,7 @@ structure Expr :> EXPR = struct
     | into Tt = I.Tt
     | into (Eq (e1, e2, e3)) = I.Eq (e1, e2, e3)
     | into (Isect (e1, xe2)) = I.Isect (e1, bind xe2)
+    | into (Subset (e1, xe2)) = I.Subset (e1, bind xe2)
 
   fun ` v = into v
 
@@ -312,6 +329,7 @@ structure Conv = struct
           | Tt => ` Tt
           | Eq (e1, e2, e3) => ` (Eq (deep f e1, deep f e2, deep f e3))
           | Isect (e1, Bind (x, e2)) => ` (Isect (deep f e1, Bind (x, deep f e2)))
+          | Subset (e1, Bind (x, e2)) => ` (Subset (deep f e1, Bind (x, deep f e2)))
     in
         f e'
     end
@@ -336,6 +354,7 @@ structure Eval = struct
     | Expr.Tt => Value
     | Expr.Eq _ => Value
     | Expr.Isect _ => Value
+    | Expr.Subset _ => Value
 
   fun eval e =
     case step e of
@@ -359,6 +378,7 @@ structure ExprAst = struct
   | Tt
   | Eq of t * t * t
   | Isect of string * t * t
+  | Subset of string * t * t
 
   fun toExpr env a =
     let fun go env (Var s) =
@@ -381,6 +401,10 @@ structure ExprAst = struct
           | go env (Isect (x, e1, e2)) =
             let val v = Var.named x
             in Expr.into (Expr.Isect (go env e1, Expr.Bind (v, go ((x, v) :: env) e2))) end
+          | go env (Subset (x, e1, e2)) =
+            let val v = Var.named x
+            in Expr.into (Expr.Subset (go env e1, Expr.Bind (v, go ((x, v) :: env) e2))) end
+
     in go env a end
 
   local
@@ -404,6 +428,10 @@ structure ExprAst = struct
               | go env (Isect (x, e1, e2)) =
                 let val v = Var.named x
                 in Expr.into (Expr.Isect (go env e1, Expr.Bind (v, go ((x, v) :: env) e2))) end
+              | go env (Subset (x, e1, e2)) =
+                let val v = Var.named x
+                in Expr.into (Expr.Subset (go env e1, Expr.Bind (v, go ((x, v) :: env) e2))) end
+
 
         in go [] a end
   in
@@ -653,7 +681,16 @@ structure Parser :> PARSER = struct
   fun expect_tok msg tok ts = expect ("token " ^ Token.toString tok ^ " as part of " ^ msg)
                                      (detect_tok tok) ts
 
-  fun parse_expr ((_, Backslash) :: ts) =
+  fun parse_factor_or_pi ts =
+      let val (f, ts) = parse_factor ts
+          val (ou, ts) = detect_tok Arrow ts
+      in case ou of
+             NONE => (f, ts)
+           | SOME () =>
+             let val (e, ts) = parse_expr ts
+             in (ExprAst.Pi ("_", f, e), ts) end
+      end
+  and parse_expr ((_, Backslash) :: ts) =
     let val (x, ts) = expect_id "name after lambda" ts
         val ((), ts) = expect_tok "lambda" Dot ts
         val (body, ts) = parse_expr ts
@@ -664,20 +701,35 @@ structure Parser :> PARSER = struct
           val ((), ts) = expect_tok "pi" Arrow ts
           val (rhs, ts) = parse_expr ts
       in (ExprAst.Pi (x, lhs, rhs), ts) end
-    | parse_expr ((_, LBrace) :: (_, Id x) :: (_, Colon) :: ts) =
+    | parse_expr (ts0 as ((_, LBrace) :: (_, Id x) :: (_, Colon) :: ts)) =
       let val (lhs, ts) = parse_expr ts
-          val ((), ts) = expect_tok "isect" RBrace ts
-          val (rhs, ts) = parse_expr ts
-      in (ExprAst.Isect (x, lhs, rhs), ts) end
-    | parse_expr ts =
-      let val (f, ts) = parse_factor ts
-          val (ou, ts) = detect_tok Arrow ts
-      in case ou of
-             NONE => (f, ts)
-           | SOME () =>
-             let val (e, ts) = parse_expr ts
-             in (ExprAst.Pi ("_", f, e), ts) end
+      in case ts of
+             (_, RBrace) :: ts =>
+             let val (rhs, ts) = parse_expr ts
+             in (ExprAst.Isect (x, lhs, rhs), ts) end
+
+           (* This is kind of nasty, but there are several subtle constraints.
+                  1) there is a "cross-precedence" ambiguity between intersection types
+                     and subset types, both of which start with "{ x : <expr>" and
+                     are only then disambiguated by a '}' vs '|'. Since subset types
+                     have a closing delimeter, they can be given very tight binding,
+                     but intersection types must bind more loosely.
+                  2) We want to give good error messages, even when intersection
+                     or subset types have small typos in them (eg, something like
+                     "{x : <expr> : <expr>}".
+                  3) It is not easy to express bactracking to try the "next match" of
+                     a definition-by-cases in sml (or any other vanilla functional
+                     language I know of), so we are stuck duplicating (at least
+                     a little bit of) code in that case.
+              So what we end up doing is checking that this looks like it will succeed
+              as a subset type (by looking for the VertBar next), and if so, then we
+              backtrack to try to parse it using the usual code path, which is factored
+              into its own function for no other reason than to minimize copy paste.
+            *)
+           | (_, VertBar) :: ts => parse_factor_or_pi ts0
+           | _ => report_error "'}' or '|' as part of intersection or subset type" ts
       end
+    | parse_expr ts = parse_factor_or_pi ts
 
   and parse_factor ts =
       let val (e1, ts) = parse_term ts
@@ -700,6 +752,12 @@ structure Parser :> PARSER = struct
                   val ((), ts) = expect_tok "parenthesized term" RParen ts
               in (SOME e, ts) end
             | parse_one_term ((_, Univ i) :: ts) = (SOME (ExprAst.Univ i), ts)
+            | parse_one_term ((_, LBrace) :: (_, Id x) :: (_, Colon) :: ts) =
+              let val (lhs, ts) = parse_expr ts
+                  val ((), ts) = expect_tok "subset" VertBar ts
+                  val (rhs, ts) = parse_expr ts
+                  val ((), ts) = expect_tok "subset" RBrace ts
+              in (SOME (ExprAst.Subset (x, lhs, rhs)), ts) end
             | parse_one_term ts = (NONE, ts)
           fun go acc ts =
             case parse_one_term ts of
