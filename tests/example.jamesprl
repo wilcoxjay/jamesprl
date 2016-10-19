@@ -22,7 +22,9 @@ theorem isect : {A : U{0}} A -> A {
 
 theorem subset_wf : {A : U{0}} {B : A -> U{0}} {x : A | B x} in U{0} {
   intro with U{1}; [eq, id];
-  intro with U{1}; [eq; [hypeq, eq], id]
+  intro with U{1}; [eq; [hypeq, eq], id];
+  eq; [hypeq, id];
+  eq with A -> U{0}; hypeq
 }.
 
 theorem polyid : (f : {A : U{0}} A -> A) -> f = (\x. x) in {A : U{0}} A -> A {
