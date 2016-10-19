@@ -20,6 +20,11 @@ theorem isect : {A : U{0}} A -> A {
   hyp x
 }.
 
+theorem subset_wf : {A : U{0}} {B : A -> U{0}} {x : A | B x} in U{0} {
+  intro with U{1}; [eq, id];
+  intro with U{1}; [eq; [hypeq, eq], id]
+}.
+
 theorem polyid : (f : {A : U{0}} A -> A) -> f = (\x. x) in {A : U{0}} A -> A {
   intro with U{1};
   [ eq; [eq, eq; hypeq], id ];
