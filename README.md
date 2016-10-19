@@ -22,8 +22,9 @@ There is also a (silent and slightly out-dated) [video demo](https://www.youtube
 Open a `jamesprl` file and evaluate the following elisp in that buffer (e.g. using `M-:`) to get a reasonable interaction mode. You need to replace `<filename>` with the name of your file, and `<path>/<to>/jamesprl` with the absolute path to the `jamesprl` executable in the root of this repository. 
 
 ```
-(local-set-key (kbd "C-c C-l") 'compile)
-(setq compile-command "<path>/<to>/jamesprl <filename>.jamesprl")
+(progn
+    (local-set-key (kbd "C-c C-l") 'compile)
+    (setq compile-command "<path>/<to>/jamesprl <filename>.jamesprl"))
 ```
 
 Then as you work on your proof, save and hit `C-c C-l` to see the remaining subgoals. 
