@@ -949,6 +949,7 @@ structure Derivation = struct
              | FunExt of t * t * Var.t * t
              | EqSubst of expr * expr * t * t
              | SubsetEq of Var.t * t * t
+             | EqEq of t * t * t
 
   fun extract (Hyp x) = `(Var x)
     | extract (HypEq x) = `Tt
@@ -964,6 +965,7 @@ structure Derivation = struct
     | extract (FunExt (d1, d2, x, d3)) = extract d3
     | extract (EqSubst (from, to, d1, d2)) = extract d2
     | extract (SubsetEq (x, A, B)) = `Tt
+    | extract (EqEq (d1, d2, d3)) = `Tt
 end
 
 structure TacticResult = struct
@@ -1295,6 +1297,8 @@ structure Rules = struct
   end
 
   structure Eq = struct
+    open Expr
+
     local
         fun Replace from to e =
           if Expr.alphaEq from e
@@ -1314,6 +1318,27 @@ structure Rules = struct
                           | _ => raise InternalError "Eq.Subst" }
         end
     end
+
+    (* H >> (e11 = e12 in A1) = (e21 = e22 in A2) in U{i}
+     *     H >> A1 = A2 in U{i}
+     *     H >> e11 = e21 in A1
+     *     H >> e12 = e22 in A1
+     *)
+    fun Eq (H >> C) =
+      let val (e11, e12, A1, e21, e22, A2, i) =
+              case outof C of
+                  Expr.Eq (lhs, rhs, ty) =>
+                  (case (outof lhs, outof rhs, outof ty) of
+                       (Expr.Eq (e11, e12, A1), Expr.Eq (e21, e22, A2), Univ i) =>
+                       (e11, e12, A1, e21, e22, A2, i)
+                     | _ => raise ExternalError "Eq.Eq expects an equality between equality types in a universe")
+               | _ => raise ExternalError "Eq.Eq expects an equality"
+      in { subgoals = [H >> `(Expr.Eq (A1, A2, `(Univ i))),
+                       H >> `(Expr.Eq (e11, e21, A1)),
+                       H >> `(Expr.Eq (e12, e22, A1))],
+           evidence = fn [d1, d2, d3] => Derivation.EqEq (d1, d2, d3)
+                              | _ => raise InternalError "Eq.Eq" }
+      end
   end
 
   structure Subset = struct
@@ -1371,6 +1396,7 @@ structure Rules = struct
       ORELSE Isect.Eq
       ORELSE Isect.MemEq
       ORELSE Subset.Eq
+      ORELSE Eq.Eq
       ORELSE FAIL "No applicable equality step (perhaps you forgot a 'with'?)"
 
   fun Elim x oe =
