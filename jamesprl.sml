@@ -941,6 +941,7 @@ structure Derivation = struct
              | PiEq of Var.t * t * t
              | UniEq of int
              | LamEq of Var.t * t * t
+             | ApEq of t * t
              | IsectIntro of Var.t * t * t
              | IsectEq of Var.t * t * t
              | IsectElim of Var.t * expr * t * Var.t * Var.t * t
@@ -954,6 +955,7 @@ structure Derivation = struct
     | extract (PiEq (x, A, B)) = `Tt
     | extract (UniEq _) = `Tt
     | extract (LamEq (x, e1, e2)) = `Tt
+    | extract (ApEq (d1, d2)) = `Tt
     | extract (IsectIntro (x, A, B)) = subst x (`Tt) (extract B)
     | extract (IsectEq (x, A, B)) = `Tt
     | extract (IsectElim (x, a, d1, z, w, d2)) = subst w (`Tt) (subst z (`(Var x)) (extract d2))
@@ -1111,6 +1113,34 @@ structure Rules = struct
            evidence = fn [d1, d2] => Derivation.LamEq (x, d1, d2)
                       | _ => raise InternalError "Pi.LamEq"}
       end
+
+    (* Note: this could be more general in the decidable side condition
+     * ty =alpha= B[e1/x] by instead requiring something like
+     *     H >> ty = B[e1/x] in U{i}
+     * for some i
+     *)
+    (* H >> f e1 = g e2 in ty
+     *     H >> f = g in (x : A) -> B
+     *     H >> e1 = e2 in A
+     *     ty =alpha= B[e1/x]
+     *)
+    fun ApEq a (H >> C) =
+      let val e = ExprAst.toExpr (Telescope.toEnv H) a
+          val (f, e1, g, e2, ty, x, A, B) =
+              case (outof C, outof e) of
+                  (Eq (lhs, rhs, ty), Pi (A, Bind (x, B))) =>
+                  (case (outof lhs, outof rhs) of
+                       (Ap (f, e1), Ap (g, e2)) => (f, e1, g, e2, ty, x, A, B)
+                     | _ => raise ExternalError "Pi.ApEq expects an equality between function applications")
+                | _ => raise ExternalError "Pi.ApEq expects an equality in the goal and a pi argument"
+      in if Expr.alphaEq ty (Expr.subst x e1 B)
+         then { subgoals = [H >> `(Eq (f, g, e)),
+                            H >> `(Eq (e1, e2, A))],
+                evidence = fn [d1, d2] => Derivation.ApEq (d1, d2)
+                                   | _ => raise InternalError "Pi.ApEq" }
+         else raise ExternalError "Pi.ApEq: goal does not match argument"
+      end
+
 
     (* H >> (x : A1) -> B1 = (x : A2) -> B2 in U{i}
      *     H >> A1 = A2 in U{i}
@@ -1292,6 +1322,13 @@ structure Rules = struct
       | SOME e => (case Expr.outof (ExprAst.toExpr [] e) of
                        Expr.Univ i => t i
                      | _ => FAIL "level expr must be universe")
+                  handle _ => FAIL "level expr must be universe"
+
+  fun wrap_expr oe t =
+    case oe of
+        NONE => FAIL "expected expression"
+      | SOME e => t e
+
   infix ORELSE
   fun Intro oe ox =
            (wrap_level oe Pi.Intro ox)
@@ -1300,6 +1337,7 @@ structure Rules = struct
   fun Eq oe =
              Univ.Eq
       ORELSE wrap_level oe Pi.LamEq
+      ORELSE wrap_expr oe Pi.ApEq
       ORELSE Pi.Eq
       ORELSE Isect.Eq
       ORELSE Isect.MemEq
