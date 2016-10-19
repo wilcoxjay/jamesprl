@@ -37,7 +37,7 @@ theorem polyid : (f : {A : U{0}} A -> A) -> f = (\x. x) in {A : U{0}} A -> A {
   , reduce
   ];
   elim f with {y : A | x = y in A};
-  [ eq; [hypeq, id]
-  , id
-  ]
+  [ eq; [hypeq, eq; hypeq], id ];
+  subst with f = z in {y : A | x = y in A} -> {y : A | x = y in A};
+  [ hyp w, id]
 }.
