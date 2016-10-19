@@ -427,6 +427,7 @@ structure TacticAst = struct
   | HypEq
   | Reduce
   | Ext of string option
+  | Subst of ExprAst.t
 
   fun withToString NONE = ""
     | withToString (SOME e) = " with " ^ ExprAst.toString e
@@ -450,6 +451,7 @@ structure TacticAst = struct
     | toString HypEq = "hypeq"
     | toString Reduce = "reduce"
     | toString (Ext s) = "ext" ^ asToString s
+    | toString (Subst e) = "subst" ^ withToString (SOME e)
 end
 
 structure CommandAst = struct
@@ -771,6 +773,12 @@ structure Parser :> PARSER = struct
     | parse_tactic2 ((_, Id "ext") :: ts) =
       let val (os, ts) = parse_as ts
       in (TacticAst.Ext os, ts) end
+    | parse_tactic2 ((_, Id "subst") :: ts) =
+      let val (oe, ts') = parse_with ts
+          val (e, ts) = case oe of
+                      SOME e => (e, ts')
+                    | NONE => report_error "'with' as part of subst" ts'
+      in (TacticAst.Subst e, ts) end
     | parse_tactic2 ts = report_error "tactic" ts
 
 
@@ -880,6 +888,7 @@ structure Derivation = struct
              | IsectElim of Var.t * expr * t * Var.t * Var.t * t
              | IsectMemEq of Var.t * t
              | FunExt of t * t * Var.t * t
+             | EqSubst of expr * expr * t * t
 
   fun extract (Hyp x) = `(Var x)
     | extract (HypEq x) = `Tt
@@ -892,6 +901,7 @@ structure Derivation = struct
     | extract (IsectElim (x, a, d1, z, w, d2)) = subst w (`Tt) (subst z (`(Var x)) (extract d2))
     | extract (IsectMemEq (x, d)) = subst x (`Tt) (extract d)
     | extract (FunExt (d1, d2, x, d3)) = extract d3
+    | extract (EqSubst (from, to, d1, d2)) = extract d2
 end
 
 structure TacticResult = struct
@@ -1194,6 +1204,30 @@ structure Rules = struct
                                "rather than " ^ Expr.toString C)
   end
 
+  structure Eq = struct
+    local
+        fun Replace from to e =
+          if Expr.alphaEq from e
+          then to
+          else e
+    in
+      fun Subst a (H >> C) =
+        let val e = ExprAst.toExpr (Telescope.toEnv H) a
+            val (from, to) =
+                case Expr.outof e of
+                    Expr.Eq (from, to, _) => (from, to)
+                  | _ => raise ExternalError "Eq.Subst expects its argument to be an equality"
+        in
+          { subgoals = [H >> e,
+                        H >> Conv.deep (Replace from to) C],
+            evidence = fn [d1, d2] => Derivation.EqSubst (from, to, d1, d2)
+                          | _ => raise InternalError "Eq.Subst" }
+        end
+    end
+  end
+
+
+
   fun wrap_level oe t =
     case oe of
         NONE => FAIL "expected level"
@@ -1235,6 +1269,7 @@ structure TacticInterpreter = struct
     | interpret HypEq = Rules.General.HypEq
     | interpret Reduce = Rules.General.Reduce
     | interpret (Ext s) = Rules.Pi.FunExt s
+    | interpret (Subst e) = Rules.Eq.Subst e
 end
 
 structure Refiner = struct
