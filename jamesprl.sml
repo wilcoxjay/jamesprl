@@ -873,6 +873,7 @@ structure Derivation = struct
              | IsectIntro of Var.t * t * t
              | IsectEq of Var.t * t * t
              | IsectElim of Var.t * expr * t * Var.t * Var.t * t
+             | IsectMemEq of Var.t * t
 
   fun extract (Hyp x) = `(Var x)
     | extract (HypEq x) = `Tt
@@ -883,6 +884,7 @@ structure Derivation = struct
     | extract (IsectIntro (x, A, B)) = subst x (`Tt) (extract B)
     | extract (IsectEq (x, A, B)) = `Tt
     | extract (IsectElim (x, a, d1, z, w, d2)) = subst w (`Tt) (subst z (`(Var x)) (extract d2))
+    | extract (IsectMemEq (x, d)) = subst x (`Tt) (extract d)
 end
 
 structure TacticResult = struct
@@ -1116,6 +1118,23 @@ structure Rules = struct
            evidence = fn [d1, d2] => Derivation.IsectElim (x, a, d1, z, w, d2)
                               | _ => raise InternalError "Isect.Elim" }
       end
+
+    (* H >> e1 = e2 in {x : A} B
+     *     H, [x : A] >> e1 = e2 in B
+     *)
+    fun MemEq (H >> C) =
+      let val (lhs, rhs, A, x, B) =
+              case outof C of
+                  Expr.Eq (lhs, rhs, ty) =>
+                  (case outof ty of
+                       Expr.Isect (A, Bind (x, B)) => (lhs, rhs, A, x, B)
+                     | _ => raise ExternalError ("Isect.MemEq expects an equality " ^
+                                                "in an intersection"))
+                | _ => raise ExternalError "Isect.MemEq expects an equality"
+      in { subgoals = [(x, false, A) ::: H >> `(Expr.Eq (lhs, rhs, B))],
+           evidence = fn [d] => Derivation.IsectMemEq (x, d)
+                         | _ => raise InternalError "Isect.MemEq" }
+      end
   end
 
   structure Univ = struct
@@ -1155,6 +1174,7 @@ structure Rules = struct
       ORELSE wrap_level oe Pi.LamEq
       ORELSE Pi.Eq
       ORELSE Isect.Eq
+      ORELSE Isect.MemEq
       ORELSE FAIL "No applicable equality step (perhaps you forgot a 'with'?)"
 
   fun Elim x oe =
