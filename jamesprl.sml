@@ -1004,7 +1004,7 @@ structure Tactic = struct
   fun ID s = {subgoals = [s],
               evidence = (fn [d] => d | _ => raise InternalError "Tactic.ID")}
 
-  fun FAIL msg s = raise ExternalError ("FAIL: " ^ msg)
+  fun FAIL msg (s : Sequent.t) = raise ExternalError ("FAIL: " ^ msg)
 
   local
       fun zipWith f [] [] = []
@@ -1473,20 +1473,21 @@ structure Rules = struct
                      | _ => FAIL "level expr must be universe")
                   handle _ => FAIL "level expr must be universe"
 
-  fun wrap_expr oe t =
+  fun wrap_expr msg oe t =
     case oe of
-        NONE => FAIL "expected expression"
+        NONE => FAIL ("expected expression for " ^ msg)
       | SOME e => t e
 
   infix ORELSE
-  fun Intro oe ox =
-           (wrap_level oe Pi.Intro ox)
-    ORELSE (wrap_level oe Isect.Intro ox)
+  fun Intro oe lx =
+           wrap_level oe (fn e => Pi.Intro e lx)
+    ORELSE wrap_level oe (fn e => Isect.Intro e lx)
+    ORELSE FAIL "No applicable introduction step"
 
   fun Eq oe =
              Univ.Eq
       ORELSE wrap_level oe Pi.LamEq
-      ORELSE wrap_expr oe Pi.ApEq
+      ORELSE wrap_expr "Pi.ApEq" oe Pi.ApEq
       ORELSE Pi.Eq
       ORELSE Isect.Eq
       ORELSE Isect.MemEq
@@ -1495,10 +1496,11 @@ structure Rules = struct
       ORELSE Eq.Eq
       ORELSE FAIL "No applicable equality step (perhaps you forgot a 'with'?)"
 
-  fun Elim x oe =
-           wrap_expr oe (Isect.Elim x)
-    ORELSE wrap_expr oe (Pi.Elim x)
-    ORELSE Subset.Elim x
+  fun Elim x oe ls =
+           wrap_expr "Isect.Elim" oe (fn e => Isect.Elim x e ls)
+    ORELSE wrap_expr "Pi.Elim" oe (fn e => Pi.Elim x e ls)
+    ORELSE Subset.Elim x ls
+    ORELSE FAIL "No applicable elimination step"
 
 end
 
