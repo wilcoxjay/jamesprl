@@ -426,6 +426,7 @@ structure TacticAst = struct
   | Hyp of string
   | HypEq
   | Reduce
+  | Ext of string option
 
   fun withToString NONE = ""
     | withToString (SOME e) = " with " ^ ExprAst.toString e
@@ -448,6 +449,7 @@ structure TacticAst = struct
     | toString (Hyp x) = "hyp " ^ x
     | toString HypEq = "hypeq"
     | toString Reduce = "reduce"
+    | toString (Ext s) = "ext" ^ asToString s
 end
 
 structure CommandAst = struct
@@ -766,6 +768,9 @@ structure Parser :> PARSER = struct
           val ((), ts) = expect_tok "parenthesized tactic" RParen ts
       in (tac, ts) end
     | parse_tactic2 ((_, Id "reduce") :: ts) = (TacticAst.Reduce, ts)
+    | parse_tactic2 ((_, Id "ext") :: ts) =
+      let val (os, ts) = parse_as ts
+      in (TacticAst.Ext os, ts) end
     | parse_tactic2 ts = report_error "tactic" ts
 
 
@@ -874,6 +879,7 @@ structure Derivation = struct
              | IsectEq of Var.t * t * t
              | IsectElim of Var.t * expr * t * Var.t * Var.t * t
              | IsectMemEq of Var.t * t
+             | FunExt of t * t * Var.t * t
 
   fun extract (Hyp x) = `(Var x)
     | extract (HypEq x) = `Tt
@@ -885,6 +891,7 @@ structure Derivation = struct
     | extract (IsectEq (x, A, B)) = `Tt
     | extract (IsectElim (x, a, d1, z, w, d2)) = subst w (`Tt) (subst z (`(Var x)) (extract d2))
     | extract (IsectMemEq (x, d)) = subst x (`Tt) (extract d)
+    | extract (FunExt (d1, d2, x, d3)) = extract d3
 end
 
 structure TacticResult = struct
@@ -1054,6 +1061,34 @@ structure Rules = struct
            evidence = fn [d1, d2] => Derivation.PiEq (x, d1, d2)
                               | _ => raise InternalError "Pi.Eq" }
       end
+
+    (* H >> f = g in (x : A) -> B
+     *     H >> f in (x : A) -> B
+     *     H >> g in (x : A) -> B
+     *     H, x : A >> f x = g x in B
+     *)
+    fun FunExt os (H >> C) =
+      let val (f, g, x, A, B) =
+              case outof C of
+                  Expr.Eq (f, g, ty) =>
+                  (case outof ty of
+                       Expr.Pi (A, Bind (x, B)) => (f, g, x, A, B)
+                     | _ => raise ExternalError "Pi.FunExt expects an equality in a pi type")
+                | _ => raise ExternalError "Pi.FunExt expects an equality"
+          val (x, B) =
+              case os of
+                  NONE => (x, B)
+                | SOME s => let val y = Var.named s
+                            in (y, Expr.rename x y B) end
+          val ty = `(Expr.Pi (A, Bind (x, B)))
+      in { subgoals = [H >> `(Expr.Eq (f, f, ty)),
+                       H >> `(Expr.Eq (g, g, ty)),
+                       (x, A) :: H >> `(Expr.Eq (`(Expr.Ap (f, `(Var x))),
+                                                 `(Expr.Ap (g, `(Var x))), B))],
+           evidence = fn [d1, d2, d3] => Derivation.FunExt (d1, d2, x, d3)
+                                  | _ => raise InternalError "Pi.FunExt" }
+
+      end
   end
 
   structure Isect = struct
@@ -1198,6 +1233,7 @@ structure TacticInterpreter = struct
     | interpret (Hyp x) = Rules.General.Hyp x
     | interpret HypEq = Rules.General.HypEq
     | interpret Reduce = Rules.General.Reduce
+    | interpret (Ext s) = Rules.Pi.FunExt s
 end
 
 structure Refiner = struct
