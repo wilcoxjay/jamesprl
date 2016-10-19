@@ -444,8 +444,8 @@ end
 structure TacticAst = struct
   datatype t =
     Id
-  | Intro of ExprAst.t option * string option
-  | Elim of string * ExprAst.t option
+  | Intro of ExprAst.t option * string list
+  | Elim of string * ExprAst.t option * string list
   | Eq of ExprAst.t option
   | Fail
   | Then of t * t
@@ -454,20 +454,21 @@ structure TacticAst = struct
   | Hyp of string
   | HypEq
   | Reduce
-  | Ext of string option
+  | Ext of string list
   | Subst of ExprAst.t
 
   fun withToString NONE = ""
     | withToString (SOME e) = " with " ^ ExprAst.toString e
 
-  fun asToString NONE = ""
-    | asToString (SOME x) = " as " ^ x
+  fun asToString [] = ""
+    | asToString [x] = " as " ^ x
+    | asToString l = " as [" ^ String.concatWith ", " l ^ "]"
 
   fun toString Id = "id"
     | toString (Eq oe) = "eq" ^ withToString oe
     | toString Fail = "fail"
-    | toString (Intro (oe, ox)) = "intro" ^ withToString oe ^ asToString ox
-    | toString (Elim (x, oe)) = "elim " ^ x ^ withToString oe
+    | toString (Intro (oe, l)) = "intro" ^ withToString oe ^ asToString l
+    | toString (Elim (x, oe, l)) = "elim " ^ x ^ withToString oe ^ asToString l
     | toString (Then (t1, t2)) = toString t1 ^ "; " ^ toString t2
     | toString (ThenL (t, l)) =
       let fun go [] = ""
@@ -478,7 +479,7 @@ structure TacticAst = struct
     | toString (Hyp x) = "hyp " ^ x
     | toString HypEq = "hypeq"
     | toString Reduce = "reduce"
-    | toString (Ext s) = "ext" ^ asToString s
+    | toString (Ext l) = "ext" ^ asToString l
     | toString (Subst e) = "subst" ^ withToString (SOME e)
 end
 
@@ -769,17 +770,6 @@ structure Parser :> PARSER = struct
            | SOME f => go f ts
       end
 
-  fun parse_with ((_, With) :: ts) =
-      let val (e, ts) = parse_expr ts
-      in (SOME e, ts) end
-    | parse_with ts = (NONE, ts)
-
-  fun parse_as ((_, As) :: ts) =
-      let val (x, ts) = expect_id "name after 'as'" ts
-      in (SOME x, ts) end
-    | parse_as ts = (NONE, ts)
-
-
   fun parse_sep1 parse_item parse_sep ts =
     let fun go acc ts =
           let val (sep, ts) = parse_sep ts
@@ -791,6 +781,19 @@ structure Parser :> PARSER = struct
           end
         val (x, ts) = parse_item ts
     in go [x] ts end
+
+  fun parse_with ((_, With) :: ts) =
+      let val (e, ts) = parse_expr ts
+      in (SOME e, ts) end
+    | parse_with ts = (NONE, ts)
+
+  fun parse_as ((_, As) :: (_, LBracket) :: ts) =
+      let val (l, ts) = parse_sep1 (expect_id "name as part of 'as'") (detect_tok Comma) ts
+          val ((), ts) = expect_tok "end of name list in 'as'" RBracket ts
+      in (l, ts) end
+    | parse_as ((_, As) :: (_, Id x) :: ts) = ([x], ts)
+    | parse_as ts = ([], ts)
+
 
   fun parse_tactic ts =
     let fun go acc ((_, SemiColon) :: (_, LBracket) :: ts) =
@@ -813,12 +816,13 @@ structure Parser :> PARSER = struct
       in (TacticAst.Eq oe, ts) end
     | parse_tactic2 ((_, Id "intro") :: ts) =
       let val (oe, ts) = parse_with ts
-          val (ox, ts) = parse_as ts
-      in (TacticAst.Intro (oe, ox), ts) end
+          val (l, ts) = parse_as ts
+      in (TacticAst.Intro (oe, l), ts) end
     | parse_tactic2 ((_, Id "elim") :: ts) =
       let val (x, ts) = expect_id "hypothesis name to eliminate" ts
           val (oe, ts) = parse_with ts
-      in (TacticAst.Elim (x, oe), ts) end
+          val (l, ts) = parse_as ts
+      in (TacticAst.Elim (x, oe, l), ts) end
     | parse_tactic2 ((_, Id "hyp") :: ts) =
       let val (x, ts) = expect_id "hypothesis name" ts
       in (TacticAst.Hyp x, ts) end
@@ -829,8 +833,8 @@ structure Parser :> PARSER = struct
       in (tac, ts) end
     | parse_tactic2 ((_, Id "reduce") :: ts) = (TacticAst.Reduce, ts)
     | parse_tactic2 ((_, Id "ext") :: ts) =
-      let val (os, ts) = parse_as ts
-      in (TacticAst.Ext os, ts) end
+      let val (l, ts) = parse_as ts
+      in (TacticAst.Ext l, ts) end
     | parse_tactic2 ((_, Id "subst") :: ts) =
       let val (oe, ts') = parse_with ts
           val (e, ts) = case oe of
@@ -1101,13 +1105,13 @@ structure Rules = struct
      *     H >> A in U{i}
      *     H, x : A >> B
      *)
-    fun Intro level ox (H >> C) =
+    fun Intro level lx (H >> C) =
       let val (A, x, B) = case outof C of
                               Pi (A, Bind (x, B)) => (A, x, B)
                            | _ => raise ExternalError "Pi.Intro expects conclusion to be Pi"
-          val (x, B) = case ox of
-                           NONE => (x, B)
-                         | SOME y => let val y = Var.named y
+          val (x, B) = case lx of
+                           [] => (x, B)
+                         | List.:: (y, _) => let val y = Var.named y
                                      in (y, rename x y B) end
       in
           {subgoals = [H >> `(Eq (A, A, `(Univ level))),
@@ -1188,15 +1192,17 @@ structure Rules = struct
      *     H >> e in A
      *     H, z : B[e/y], w : z = x e in B[e/y] >> C
      *)
-    fun Elim x a (H >> C) =
+    fun Elim x a l (H >> C) =
       let val (x, ty) = getHyp true x H
           val (y, A, B) =
               case outof ty of
                   Expr.Pi (A, Bind (y, B)) => (y, A, B)
                 | _ => raise ExternalError "Pi.Elim expects hypothesis with pi type"
           val e = ExprAst.toExpr (Telescope.toEnv H) a
-          val z = Var.named "z"
-          val w = Var.named "w"
+          val (z, w) =
+              case l of
+                  List.:: (z, List.:: (w, _)) => (Var.named z, Var.named w)
+               | _ => (Var.named "z", Var.named "w")
           val ty = subst y e B
       in { subgoals = [H >> `(Expr.Eq (e, e, A)),
                        (w, `(Expr.Eq (`(Var z), `(Ap (`(Var x), e)), ty))) :: (z, ty) :: H >> C],
@@ -1212,7 +1218,7 @@ structure Rules = struct
      *     H >> g in (x : A) -> B
      *     H, x : A >> f x = g x in B
      *)
-    fun FunExt os (H >> C) =
+    fun FunExt ls (H >> C) =
       let val (f, g, x, A, B) =
               case outof C of
                   Expr.Eq (f, g, ty) =>
@@ -1221,9 +1227,9 @@ structure Rules = struct
                      | _ => raise ExternalError "Pi.FunExt expects an equality in a pi type")
                 | _ => raise ExternalError "Pi.FunExt expects an equality"
           val (x, B) =
-              case os of
-                  NONE => (x, B)
-                | SOME s => let val y = Var.named s
+              case ls of
+                  [] => (x, B)
+                | List.:: (s, _) => let val y = Var.named s
                             in (y, Expr.rename x y B) end
           val ty = `(Expr.Pi (A, Bind (x, B)))
       in { subgoals = [H >> `(Expr.Eq (f, f, ty)),
@@ -1243,14 +1249,14 @@ structure Rules = struct
      *     H >> A in U{i}
      *     H, [x : A] >> B
      *)
-    fun Intro level ox (H >> C) =
+    fun Intro level lx (H >> C) =
       let val (A, x, B) = case outof C of
                               Isect (A, Bind (x, B)) => (A, x, B)
                            | _ => raise ExternalError "Isect.Intro expects conclusion to be Isect"
-          val (x, B) = case ox of
-                           NONE => (x, B)
-                         | SOME y => let val y = Var.named y
-                                     in (y, rename x y B) end
+          val (x, B) = case lx of
+                           [] => (x, B)
+                         | List.:: (y, _) => let val y = Var.named y
+                                             in (y, rename x y B) end
       in
           {subgoals = [H >> `(Eq (A, A, `(Univ level))),
                        (x, false, A) ::: H >> B],
@@ -1282,16 +1288,18 @@ structure Rules = struct
      *     H >> a in A
      *     z : B[a/y], w : x = z in B[a/y] >> C
      *)
-    fun Elim x a (H >> C) =
+    fun Elim x a l (H >> C) =
       let val (x, ty) = getHyp false x H
           val (y, A, B) =
               case outof ty of
                   Isect (A, Bind (y, B)) => (y, A, B)
                 | _ => raise ExternalError "Isect.Elim expects to eliminate an intersection"
           val a = ExprAst.toExpr (Telescope.toEnv H) a
-          val z = Var.named "z"
           val Ba = subst y a B
-          val w = Var.named "w"
+          val (z, w) =
+              case l of
+                  List.:: (z, List.:: (w, _)) => (Var.named z, Var.named w)
+               | _ => (Var.named "z", Var.named "w")
           val wty = `(Expr.Eq (`(Var x), `(Var z), Ba))
       in { subgoals = [H >> `(Expr.Eq (a, a, A)),
                        (w, wty) :: (z, Ba) :: H >> C],
@@ -1432,13 +1440,19 @@ structure Rules = struct
     (* H1, x : {y : A | B}, H2 >> C
      *     H, x : {y : A | B}, y : A, [z : B], H2[y/x] >> C[y/x]
      *)
-    fun Elim x (H >> C) =
-      let val (x, ty) = getHyp false x H
+    fun Elim x l (H >> C) =
+      let val () = print "hello from Subset.Elim\n"
+          val (x, ty) = getHyp false x H
           val (y, A, B) =
               case outof ty of
                   Subset (A, Bind (y, B)) => (y, A, B)
                 | _ => raise ExternalError "Subset.Elim expects to eliminate a subset type"
-          val z = Var.named "z"
+          val (y, l) = case l of
+                           List.:: (y, l) => (Var.named y, l)
+                         | _ => (y, l)
+          val z = case l of
+                      List.:: (z, _) => Var.named z
+                    | _ => Var.named "z"
           val H' = Telescope.insertAfter y false z B (Telescope.insertAfter x true y A H)
           val f = Expr.subst x (`(Var y))
           val H' = Telescope.map f H'
@@ -1492,8 +1506,8 @@ structure TacticInterpreter = struct
   open Tactic TacticAst
 
   fun interpret Id = ID
-    | interpret (Intro (oe, ox)) = Rules.Intro oe ox
-    | interpret (Elim (x, oe)) = Rules.Elim x oe
+    | interpret (Intro (oe, lx)) = Rules.Intro oe lx
+    | interpret (Elim (x, oe, l)) = Rules.Elim x oe l
     | interpret (Eq oe) = Rules.Eq oe
     | interpret Fail = FAIL ""
     | interpret (Then (t1, t2)) = THEN (interpret t1, interpret t2)
@@ -1502,7 +1516,7 @@ structure TacticInterpreter = struct
     | interpret (Hyp x) = Rules.General.Hyp x
     | interpret HypEq = Rules.General.HypEq
     | interpret Reduce = Rules.General.Reduce
-    | interpret (Ext s) = Rules.Pi.FunExt s
+    | interpret (Ext l) = Rules.Pi.FunExt l
     | interpret (Subst e) = Rules.Eq.Subst e
 end
 
