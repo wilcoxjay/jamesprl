@@ -872,6 +872,7 @@ structure Derivation = struct
              | LamEq of Var.t * t * t
              | IsectIntro of Var.t * t * t
              | IsectEq of Var.t * t * t
+             | IsectElim of Var.t * expr * t * Var.t * Var.t * t
 
   fun extract (Hyp x) = `(Var x)
     | extract (HypEq x) = `Tt
@@ -881,6 +882,7 @@ structure Derivation = struct
     | extract (LamEq (x, e1, e2)) = `Tt
     | extract (IsectIntro (x, A, B)) = subst x (`Tt) (extract B)
     | extract (IsectEq (x, A, B)) = `Tt
+    | extract (IsectElim (x, a, d1, z, w, d2)) = subst w (`Tt) (subst z (`(Var x)) (extract d2))
 end
 
 structure TacticResult = struct
@@ -1092,6 +1094,28 @@ structure Rules = struct
            evidence = fn [d1, d2] => Derivation.IsectEq (x, d1, d2)
                               | _ => raise InternalError "Isect.Eq" }
       end
+
+    (* H >> C
+     *     H(x) = {y : A} B
+     *     H >> a in A
+     *     z : B[a/y], w : x = z in B[a/y] >> C
+     *)
+    fun Elim x a (H >> C) =
+      let val (x, ty) = getHyp false x H
+          val (y, A, B) =
+              case outof ty of
+                  Isect (A, Bind (y, B)) => (y, A, B)
+                | _ => raise ExternalError "Isect.Elim expects to eliminate an intersection"
+          val a = ExprAst.toExpr (Telescope.toEnv H) a
+          val z = Var.named "z"
+          val Ba = subst y a B
+          val w = Var.named "w"
+          val wty = `(Expr.Eq (`(Var x), `(Var z), Ba))
+      in { subgoals = [H >> `(Expr.Eq (a, a, A)),
+                       (w, wty) :: (z, Ba) :: H >> C],
+           evidence = fn [d1, d2] => Derivation.IsectElim (x, a, d1, z, w, d2)
+                              | _ => raise InternalError "Isect.Elim" }
+      end
   end
 
   structure Univ = struct
@@ -1134,7 +1158,10 @@ structure Rules = struct
       ORELSE FAIL "No applicable equality step (perhaps you forgot a 'with'?)"
 
   fun Elim x oe =
-    FAIL "Elim is unimplemented"
+    case oe of
+        SOME e => Isect.Elim x e
+     | _ => FAIL "Elim currently requires 'with' form"
+
 end
 
 structure TacticInterpreter = struct
