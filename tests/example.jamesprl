@@ -35,5 +35,9 @@ theorem polyid : (f : {A : U{0}} A -> A) -> f = (\x. x) in {A : U{0}} A -> A {
   [ elim f with A; [hypeq, subst with f = z in A -> A; [hyp w, hypeq]]
   , eq with U{0}; hypeq
   , reduce
+  ];
+  elim f with {y : A | x = y in A};
+  [ eq; [hypeq, id]
+  , id
   ]
 }.
