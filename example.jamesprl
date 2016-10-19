@@ -40,5 +40,8 @@ theorem polyid : (f : {A : U{0}} A -> A) -> f = (\x. x) in {A : U{0}} A -> A {
   [ eq; [hypeq, eq; hypeq], id ];
   subst with f = z in {y : A | x = y in A} -> {y : A | x = y in A};
   [ hyp w, id];
-  elim z with x
+  elim z with x;
+  [ eq with U{0}; [hypeq, eq; [hypeq, eq; hypeq], hypeq]
+  , id
+  ]
 }.

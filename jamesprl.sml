@@ -950,6 +950,7 @@ structure Derivation = struct
              | FunExt of t * t * Var.t * t
              | EqSubst of expr * expr * t * t
              | SubsetEq of Var.t * t * t
+             | SubsetMemEq of t * t * t
              | EqEq of t * t * t
 
   fun extract (Hyp x) = `(Var x)
@@ -967,6 +968,7 @@ structure Derivation = struct
     | extract (FunExt (d1, d2, x, d3)) = extract d3
     | extract (EqSubst (from, to, d1, d2)) = extract d2
     | extract (SubsetEq (x, A, B)) = `Tt
+    | extract (SubsetMemEq (d1, d2, d3)) = `Tt
     | extract (EqEq (d1, d2, d3)) = `Tt
 end
 
@@ -1391,6 +1393,25 @@ structure Rules = struct
       end
 
 
+    (* H >> e1 = e2 in {x : A | B}
+     *     H >> e1 = e2 in A
+     *     H >> {x : A | B} in U{i}
+     *     H >> B[e1/x]
+     *)
+    fun MemEq level (H >> C) =
+      let val (e1, e2, ty, x, A, B) =
+              case outof C of
+                  Expr.Eq (e1, e2, ty) =>
+                  (case outof ty of
+                       Subset(A, Bind (x, B)) => (e1, e2, ty, x, A, B)
+                     | _ => raise ExternalError "Subset.MemEq expects an equality in a subset type")
+                | _ => raise ExternalError "Subset.MemEq expects an equality"
+      in { subgoals = [H >> `(Expr.Eq (e1, e2, A)),
+                       H >> `(Expr.Eq (ty, ty, `(Univ level))),
+                       H >> Expr.subst x e1 B],
+           evidence = fn [d1, d2, d3] => Derivation.SubsetMemEq (d1, d2, d3)
+                                  | _ => raise InternalError "Subset.MemEq" }
+      end
   end
 
 
@@ -1420,6 +1441,7 @@ structure Rules = struct
       ORELSE Isect.Eq
       ORELSE Isect.MemEq
       ORELSE Subset.Eq
+      ORELSE wrap_level oe Subset.MemEq
       ORELSE Eq.Eq
       ORELSE FAIL "No applicable equality step (perhaps you forgot a 'with'?)"
 
