@@ -948,6 +948,7 @@ structure Derivation = struct
              | IsectMemEq of Var.t * t
              | FunExt of t * t * Var.t * t
              | EqSubst of expr * expr * t * t
+             | SubsetEq of Var.t * t * t
 
   fun extract (Hyp x) = `(Var x)
     | extract (HypEq x) = `Tt
@@ -962,6 +963,7 @@ structure Derivation = struct
     | extract (IsectMemEq (x, d)) = subst x (`Tt) (extract d)
     | extract (FunExt (d1, d2, x, d3)) = extract d3
     | extract (EqSubst (from, to, d1, d2)) = extract d2
+    | extract (SubsetEq (x, A, B)) = `Tt
 end
 
 structure TacticResult = struct
@@ -1314,6 +1316,33 @@ structure Rules = struct
     end
   end
 
+  structure Subset = struct
+    open Expr
+
+    (* Subset.Eq is not as powerful/extensional as it could be, but I haven't needed the
+       more powerful version yet! *)
+
+    (* H >> {x : A1 | B1 } = {x : A2 | B2} in U{i}
+     *     H >> A1 = A2 in U{i}
+     *     H, x : A1 >> B1 = B2 in U{i}
+     *)
+    fun Eq (H >> C) =
+      let val (x, A1, B1, y, A2, B2, i) =
+              case outof C of
+                  Expr.Eq (lhs, rhs, ty) =>
+                  (case (outof lhs, outof rhs, outof ty) of
+                       (Subset (A1, Bind (x, B1)), Subset (A2, Bind (y, B2)), Univ i) =>
+                       (x, A1, B1, y, A2, B2, i)
+                     | _ => raise ExternalError "Subset.Eq expects an equality between pis in a universe")
+               | _ => raise ExternalError "Subset.Eq expects an equality"
+      in { subgoals = [H >> `(Expr.Eq (A1, A2, `(Univ i))),
+                       (x, A1) :: H >> `(Expr.Eq (B1, rename y x B2, `(Univ i)))],
+           evidence = fn [d1, d2] => Derivation.SubsetEq (x, d1, d2)
+                              | _ => raise InternalError "Subset.Eq" }
+      end
+
+
+  end
 
 
   fun wrap_level oe t =
@@ -1341,6 +1370,7 @@ structure Rules = struct
       ORELSE Pi.Eq
       ORELSE Isect.Eq
       ORELSE Isect.MemEq
+      ORELSE Subset.Eq
       ORELSE FAIL "No applicable equality step (perhaps you forgot a 'with'?)"
 
   fun Elim x oe =
