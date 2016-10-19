@@ -72,4 +72,4 @@ At the time of writing, the `jamesprl` computation system supports the following
 ## Commands
 At the time of writing, `jamesprl` supports two commands:
 - `definition foo := <expr>.` This command parses successfully but is currently unimplemented and will throw an exception. 
-- `theorem bar : <expr> { <tactic> }.` Attempts to prove that the type represented by the given expression is inhabited by applying the given tactic. If the tactic does not finish the proof, the remaining subgoals are printed. If the tactic finishes hte proof, then the computational content of the proof is printed. Note that, at the time of writing, there is no way to use previously proved theorems.
+- `theorem bar : <expr> { <tactic> }.` Attempts to prove that the type represented by the given expression is inhabited by applying the given tactic. If the tactic does not finish the proof, the remaining subgoals are printed. If the tactic finishes the proof, then the computational content of the proof is printed. Note that, at the time of writing, there is no way to use previously proved theorems.
