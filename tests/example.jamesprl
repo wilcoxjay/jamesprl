@@ -22,8 +22,11 @@ theorem isect : {A : U{0}} A -> A {
 
 theorem polyid : (f : {A : U{0}} A -> A) -> f = (\x. x) in {A : U{0}} A -> A {
   intro with U{1};
-  [ eq; [eq, eq; hypeq]
-  , id
+  [ eq; [eq, eq; hypeq], id ];
+  eq;
+  ext as x;
+  [ elim f with A; [hypeq, subst with f = z in A -> A; [hyp w, hypeq]]
+  , eq with U{0}; hypeq
+  , reduce
   ]
 }.
-
