@@ -897,7 +897,7 @@ structure Tactic = struct
   fun ID s = {subgoals = [s],
               evidence = (fn [d] => d | _ => raise InternalError "Tactic.ID")}
 
-  fun FAIL s = raise ExternalError "Fail"
+  fun FAIL msg s = raise ExternalError ("FAIL: " ^ msg)
 
   local
       fun zipWith f [] [] = []
@@ -1117,10 +1117,10 @@ structure Rules = struct
 
   fun wrap_level oe t =
     case oe of
-        NONE => FAIL
+        NONE => FAIL "expected level"
       | SOME e => (case Expr.outof (ExprAst.toExpr [] e) of
                        Expr.Univ i => t i
-                     | _ => FAIL)
+                     | _ => FAIL "level expr must be universe")
   infix ORELSE
   fun Intro oe ox =
            (wrap_level oe Pi.Intro ox)
@@ -1131,8 +1131,10 @@ structure Rules = struct
       ORELSE wrap_level oe Pi.LamEq
       ORELSE Pi.Eq
       ORELSE Isect.Eq
+      ORELSE FAIL "No applicable equality step (perhaps you forgot a 'with'?)"
 
-  fun Elim x oe = FAIL
+  fun Elim x oe =
+    FAIL "Elim is unimplemented"
 end
 
 structure TacticInterpreter = struct
@@ -1142,7 +1144,7 @@ structure TacticInterpreter = struct
     | interpret (Intro (oe, ox)) = Rules.Intro oe ox
     | interpret (Elim (x, oe)) = Rules.Elim x oe
     | interpret (Eq oe) = Rules.Eq oe
-    | interpret Fail = FAIL
+    | interpret Fail = FAIL ""
     | interpret (Then (t1, t2)) = THEN (interpret t1, interpret t2)
     | interpret (ThenL (t, l)) = THENL (interpret t, List.map interpret l)
     | interpret (OrElse (t1, t2)) = ORELSE (interpret t1, interpret t2)
