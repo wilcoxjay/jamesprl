@@ -1172,7 +1172,7 @@ structure Rules = struct
     (* H >> C
      *     H(x) = (y : A) -> B
      *     H >> e in A
-     *     H, z : B[e/y] >> C
+     *     H, z : B[e/y], w : z = x e in B[e/y] >> C
      *)
     fun Elim x a (H >> C) =
       let val (x, ty) = getHyp true x H
@@ -1182,8 +1182,10 @@ structure Rules = struct
                 | _ => raise ExternalError "Pi.Elim expects hypothesis with pi type"
           val e = ExprAst.toExpr (Telescope.toEnv H) a
           val z = Var.named "z"
+          val w = Var.named "w"
+          val ty = subst y e B
       in { subgoals = [H >> `(Expr.Eq (e, e, A)),
-                       (z, subst y e B) :: H >> C],
+                       (w, `(Expr.Eq (`(Var z), `(Ap (`(Var x), e)), ty))) :: (z, ty) :: H >> C],
            evidence = fn [d1, d2] => Derivation.PiElim (e, x, z, d1, d2)
                               | _ => raise InternalError "Pi.Elim" }
       end
