@@ -869,6 +869,7 @@ signature TELESCOPE = sig
 
   (* the bool says whether the variable is visible *)
   val extend : bool -> Var.t -> Expr.expr -> t -> t
+  val insertAfter : Var.t -> bool -> Var.t -> Expr.expr -> t -> t
   val toEnv : t -> (string * Var.t) list
   val map : (Expr.expr -> Expr.expr) -> t -> t
 end
@@ -907,7 +908,18 @@ structure Telescope :> TELESCOPE = struct
            else NONE
       else lookup b v tel
 
-  fun extend b x e tel = (x, if b then Visible else Invisible, e) :: tel
+  fun boolToVisibility b = if b then Visible else Invisible
+
+  fun extend b x e tel = (x, boolToVisibility b, e) :: tel
+
+  fun insertAfter y b x e tel =
+    let val z = (x, boolToVisibility b, e)
+        fun go [] = [z]
+          | go ((t as (w, bw, ew)) :: tel) =
+            if Var.eq y w
+            then z :: t :: tel
+            else t :: go tel
+    in go tel end
 
   val toEnv : t -> (string * Var.t) list = List.map (fn (v, _, _) => (Var.name v, v))
 
