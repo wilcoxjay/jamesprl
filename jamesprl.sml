@@ -939,6 +939,7 @@ structure Derivation = struct
              | HypEq of Var.t
              | PiIntro of Var.t * t * t
              | PiEq of Var.t * t * t
+             | PiElim of expr * Var.t * Var.t * t * t
              | UniEq of int
              | LamEq of Var.t * t * t
              | ApEq of t * t
@@ -955,6 +956,7 @@ structure Derivation = struct
     | extract (HypEq x) = `Tt
     | extract (PiIntro (x, A, B)) = `(Lam (Bind (x, extract B)))
     | extract (PiEq (x, A, B)) = `Tt
+    | extract (PiElim (e, f, x, A, B)) = subst x (`(Ap (`(Var f), e))) (extract B)
     | extract (UniEq _) = `Tt
     | extract (LamEq (x, e1, e2)) = `Tt
     | extract (ApEq (d1, d2)) = `Tt
@@ -1164,6 +1166,28 @@ structure Rules = struct
            evidence = fn [d1, d2] => Derivation.PiEq (x, d1, d2)
                               | _ => raise InternalError "Pi.Eq" }
       end
+
+    (* H >> C
+     *     H(x) = (y : A) -> B
+     *     H >> e in A
+     *     H, z : B[e/y] >> C
+     *)
+    fun Elim x a (H >> C) =
+      let val (x, ty) = getHyp true x H
+          val (y, A, B) =
+              case outof ty of
+                  Expr.Pi (A, Bind (y, B)) => (y, A, B)
+                | _ => raise ExternalError "Pi.Elim expects hypothesis with pi type"
+          val e = ExprAst.toExpr (Telescope.toEnv H) a
+          val z = Var.named "z"
+      in { subgoals = [H >> `(Expr.Eq (e, e, A)),
+                       (z, subst y e B) :: H >> C],
+           evidence = fn [d1, d2] => Derivation.PiElim (e, x, z, d1, d2)
+                              | _ => raise InternalError "Pi.Elim" }
+      end
+
+
+
 
     (* H >> f = g in (x : A) -> B
      *     H >> f in (x : A) -> B
@@ -1400,9 +1424,8 @@ structure Rules = struct
       ORELSE FAIL "No applicable equality step (perhaps you forgot a 'with'?)"
 
   fun Elim x oe =
-    case oe of
-        SOME e => Isect.Elim x e
-     | _ => FAIL "Elim currently requires 'with' form"
+           wrap_expr oe (Isect.Elim x)
+    ORELSE wrap_expr oe (Pi.Elim x)
 
 end
 
