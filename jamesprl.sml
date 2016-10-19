@@ -995,9 +995,10 @@ structure Rules = struct
                                     Expr.toString C)
 
 
+    fun ConvSequent c (H >> C) = Telescope.map c H >> c C
 
-    fun Reduce (H >> C) =
-      { subgoals = [Telescope.map (Conv.deep Eval.eval) H >> Conv.deep Eval.eval C],
+    fun Reduce seq =
+      { subgoals = [ConvSequent (Conv.deep Eval.eval) seq],
         evidence = fn [d] => d | _ => raise InternalError "Reduce" }
   end
 
