@@ -963,6 +963,7 @@ structure Derivation = struct
              | EqSubst of expr * expr * t * t
              | SubsetEq of Var.t * t * t
              | SubsetMemEq of t * t * t
+             | SubsetElim of Var.t * Var.t * Var.t * t
              | EqEq of t * t * t
 
   fun extract (Hyp x) = `(Var x)
@@ -981,6 +982,7 @@ structure Derivation = struct
     | extract (EqSubst (from, to, d1, d2)) = extract d2
     | extract (SubsetEq (x, A, B)) = `Tt
     | extract (SubsetMemEq (d1, d2, d3)) = `Tt
+    | extract (SubsetElim (x, y, z, d3)) = subst y (`(Var x)) (subst z (`Tt) (extract d3))
     | extract (EqEq (d1, d2, d3)) = `Tt
 end
 
@@ -1426,6 +1428,26 @@ structure Rules = struct
            evidence = fn [d1, d2, d3] => Derivation.SubsetMemEq (d1, d2, d3)
                                   | _ => raise InternalError "Subset.MemEq" }
       end
+
+    (* H1, x : {y : A | B}, H2 >> C
+     *     H, x : {y : A | B}, y : A, [z : B], H2[y/x] >> C[y/x]
+     *)
+    fun Elim x (H >> C) =
+      let val (x, ty) = getHyp false x H
+          val (y, A, B) =
+              case outof ty of
+                  Subset (A, Bind (y, B)) => (y, A, B)
+                | _ => raise ExternalError "Subset.Elim expects to eliminate a subset type"
+          val z = Var.named "z"
+          val H' = Telescope.insertAfter y false z B (Telescope.insertAfter x true y A H)
+          val f = Expr.subst x (`(Var y))
+          val H' = Telescope.map f H'
+          val C' = f C
+      in { subgoals = [H' >> C'],
+           evidence = fn [d] => Derivation.SubsetElim (x, y, z, d)
+                         | _ => raise InternalError "Subset.Elim" }
+      end
+
   end
 
 
@@ -1462,6 +1484,7 @@ structure Rules = struct
   fun Elim x oe =
            wrap_expr oe (Isect.Elim x)
     ORELSE wrap_expr oe (Pi.Elim x)
+    ORELSE Subset.Elim x
 
 end
 
