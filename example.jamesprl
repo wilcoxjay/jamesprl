@@ -36,12 +36,14 @@ theorem polyid : (f : {A : U{0}} A -> A) -> f = (\x. x) in {A : U{0}} A -> A {
   , eq with U{0}; hypeq
   , reduce
   ];
-  elim f with {y : A | x = y in A};
+  elim f with {y : A | x = y in A} as [ff, ffeq];
   [ eq; [hypeq, eq; hypeq], id ];
-  subst with f = z in {y : A | x = y in A} -> {y : A | x = y in A};
-  [ hyp w, id];
-  elim z with x;
-  [ eq with U{0}; [hypeq, eq; [hypeq, eq; hypeq], hypeq]
-  , id
-  ]
+  subst with f = ff in {y : A | x = y in A} -> {y : A | x = y in A};
+  [ hyp ffeq, id];
+  elim ff with x as [ffx, ffxeq];
+  [ eq with U{0}; [hypeq, eq; [hypeq, eq; hypeq], hypeq], id];
+  elim ffx;
+  subst with ff x = y in {y : A | x = y in A};
+  [ eqsym; hyp ffxeq, id];
+  eqsym; unhide; hyp z
 }.
