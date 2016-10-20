@@ -457,6 +457,7 @@ structure TacticAst = struct
   | Ext of string list
   | Subst of ExprAst.t
   | EqSym
+  | Unhide
 
   fun withToString NONE = ""
     | withToString (SOME e) = " with " ^ ExprAst.toString e
@@ -483,6 +484,7 @@ structure TacticAst = struct
     | toString (Ext l) = "ext" ^ asToString l
     | toString (Subst e) = "subst" ^ withToString (SOME e)
     | toString EqSym = "eqsym"
+    | toString Unhide = "unhide"
 end
 
 structure CommandAst = struct
@@ -844,6 +846,7 @@ structure Parser :> PARSER = struct
                     | NONE => report_error "'with' as part of subst" ts'
       in (TacticAst.Subst e, ts) end
     | parse_tactic2 ((_, Id "eqsym") :: ts) = (TacticAst.EqSym, ts)
+    | parse_tactic2 ((_, Id "unhide") :: ts) = (TacticAst.Unhide, ts)
     | parse_tactic2 ts = report_error "tactic" ts
 
 
@@ -879,6 +882,8 @@ signature TELESCOPE = sig
   val insertAfter : Var.t -> bool -> Var.t -> Expr.expr -> t -> t
   val toEnv : t -> (string * Var.t) list
   val map : (Expr.expr -> Expr.expr) -> t -> t
+
+  val unhide : t -> t
 end
 
 structure Telescope :> TELESCOPE = struct
@@ -931,6 +936,8 @@ structure Telescope :> TELESCOPE = struct
   val toEnv : t -> (string * Var.t) list = List.map (fn (v, _, _) => (Var.name v, v))
 
   val map : (expr -> expr) -> t -> t = fn f => List.map (fn (x, vis, e) => (x, vis, f e))
+
+  val unhide : t -> t = List.map (fn (x, _, e) => (x, Visible, e))
 end
 
 signature SEQUENT = sig
@@ -973,6 +980,7 @@ structure Derivation = struct
              | SubsetElim of Var.t * Var.t * Var.t * t
              | EqEq of t * t * t
              | EqSym of t
+             | Unhide of t
 
   fun extract (Hyp x) = `(Var x)
     | extract (HypEq x) = `Tt
@@ -993,6 +1001,7 @@ structure Derivation = struct
     | extract (SubsetElim (x, y, z, d3)) = subst y (`(Var x)) (subst z (`Tt) (extract d3))
     | extract (EqEq (d1, d2, d3)) = `Tt
     | extract (EqSym d) = extract d
+    | extract (Unhide d) = extract d
 end
 
 structure TacticResult = struct
@@ -1101,6 +1110,18 @@ structure Rules = struct
     fun Reduce seq =
       { subgoals = [ConvSequent (Conv.deep Eval.eval) seq],
         evidence = fn [d] => d | _ => raise InternalError "Reduce" }
+
+    local
+      fun irrelevant (Expr.Eq _) = true
+        | irrelevant _ = false
+    in
+      fun Unhide (H >> C) =
+        if irrelevant (Expr.outof C)
+        then { subgoals = [Telescope.unhide H >> C],
+               evidence = fn [d] => Derivation.Unhide d
+                             | _ => raise InternalError "Unhide" }
+        else raise ExternalError "Unhide: goal is not irrelevant"
+    end
   end
 
   structure Pi = struct
@@ -1537,6 +1558,7 @@ structure TacticInterpreter = struct
     | interpret (Ext l) = Rules.Pi.FunExt l
     | interpret (Subst e) = Rules.Eq.Subst e
     | interpret EqSym = Rules.Eq.Sym
+    | interpret Unhide = Rules.General.Unhide
 end
 
 structure Refiner = struct
