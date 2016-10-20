@@ -456,6 +456,7 @@ structure TacticAst = struct
   | Reduce
   | Ext of string list
   | Subst of ExprAst.t
+  | EqSym
 
   fun withToString NONE = ""
     | withToString (SOME e) = " with " ^ ExprAst.toString e
@@ -481,6 +482,7 @@ structure TacticAst = struct
     | toString Reduce = "reduce"
     | toString (Ext l) = "ext" ^ asToString l
     | toString (Subst e) = "subst" ^ withToString (SOME e)
+    | toString EqSym = "eqsym"
 end
 
 structure CommandAst = struct
@@ -841,6 +843,7 @@ structure Parser :> PARSER = struct
                       SOME e => (e, ts')
                     | NONE => report_error "'with' as part of subst" ts'
       in (TacticAst.Subst e, ts) end
+    | parse_tactic2 ((_, Id "eqsym") :: ts) = (TacticAst.EqSym, ts)
     | parse_tactic2 ts = report_error "tactic" ts
 
 
@@ -969,6 +972,7 @@ structure Derivation = struct
              | SubsetMemEq of t * t * t
              | SubsetElim of Var.t * Var.t * Var.t * t
              | EqEq of t * t * t
+             | EqSym of t
 
   fun extract (Hyp x) = `(Var x)
     | extract (HypEq x) = `Tt
@@ -988,6 +992,7 @@ structure Derivation = struct
     | extract (SubsetMemEq (d1, d2, d3)) = `Tt
     | extract (SubsetElim (x, y, z, d3)) = subst y (`(Var x)) (subst z (`Tt) (extract d3))
     | extract (EqEq (d1, d2, d3)) = `Tt
+    | extract (EqSym d) = extract d
 end
 
 structure TacticResult = struct
@@ -1389,6 +1394,17 @@ structure Rules = struct
            evidence = fn [d1, d2, d3] => Derivation.EqEq (d1, d2, d3)
                               | _ => raise InternalError "Eq.Eq" }
       end
+
+
+    fun Sym (H >> C) =
+      let val (lhs, rhs, ty) =
+              case outof C of
+                  Expr.Eq (lhs, rhs, ty) => (lhs, rhs, ty)
+                | _ => raise ExternalError "Eq.Sym expects an equality"
+      in { subgoals = [H >> `(Expr.Eq (rhs, lhs, ty))],
+           evidence = fn [d] => Derivation.EqSym d
+                           | _ => raise InternalError "Eq.Sym" }
+      end
   end
 
   structure Subset = struct
@@ -1520,6 +1536,7 @@ structure TacticInterpreter = struct
     | interpret Reduce = Rules.General.Reduce
     | interpret (Ext l) = Rules.Pi.FunExt l
     | interpret (Subst e) = Rules.Eq.Subst e
+    | interpret EqSym = Rules.Eq.Sym
 end
 
 structure Refiner = struct
