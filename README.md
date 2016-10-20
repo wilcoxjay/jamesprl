@@ -47,6 +47,7 @@ At the time of writing, the `jamesprl` computation system supports the following
 - Universes: `U{0}`, `U{1}`, etc. So for example, the polymorphic identity function would have type `(A : U{0}) -> A -> A`
 - (Family) intersection types: `{x : A} B`
 - Trivial evidence: `tt` 
+- Subset types: `{x : A | B}`
   
 ## Tactics
 `jamesprl` supports the following tactics: 
@@ -62,13 +63,22 @@ At the time of writing, the `jamesprl` computation system supports the following
 - `eq [with <expr>]` generic equality tactic. Looks at the goal, which is expected to be an equality, and attempts to make one step of progress on it. At the time of writing, `eq` works in the following cases
     - `U{i} = U{i} in U{i+1}`
     - `(\x. e1) = (\y. e2) in (z : A) -> B` the `with` form is required in this case, in order to give a universe level in which `A` lives
+    - `f e1 = g e2 in C` the with form is required and should be a pi type in which `f` and `g` are equal.
     - `(x : A1) -> B1 = (y : A2) -> B2 in U{i}`
     - `{x : A1} B1 = {y : A2} B2 in U{i}`
     - `e1 = e2 in {x : A} B`
-- `elim x [with <expr>]` generic elimination tactic. Looks at the type of `x` and does one step of elimination. At the time of writing, `elim` only supports intersection types.
+    - `{x : A1 | B1} = {x : A2 | B2} in U{i}`
+    - `e1 = e2 in {x : A | B}` the `with` form is required and should be a universe in which to show `B` is a type family.
+    - `(e11 = e12 in A1) = (e21 = e22 in A2) in U{i}`
+- `elim x [with <expr>]` generic elimination tactic. Looks at the type of `x` and does one step of elimination. At the time of writing, `elim` supports the following cases
+    - Intersection types. The `with` form is required and should be a type at which to specialize `x`
+    - Pi types. The `with` form is required; similar to intersection types above.
+    - Subset types `{y : A | B}`. Splits `x` into its "underlying" value in `A` and an extra (hidden) hypothesis that it satisfies `B`.
 - `reduce` performs as much computation as possible everywhere (analogous to `compute in *` in Coq, except that it may not terminate (but let's be real, `compute in *` may not *practically* terminate either))
 - `ext [as x]` invokes the function extensionality rule.
 - `subst with e1 = e2 in A` generates a subgoal to prove the given equality, and then replaces all occurrences of `e1` with `e2` in the main goal.
+- `eqsym` invokes symmetry of equality, transforming goals of the form `e1 = e2 in A` into `e2 = e1 in A`.
+- `unhide` marks all hypotheses as visible, as long as the goal is "irrelevant". At the time of writing, only goals syntactically of the form `e1 = e2 in A` are detected as irrelevant.
 
 ## Commands
 At the time of writing, `jamesprl` supports two commands:
